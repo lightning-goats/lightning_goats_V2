@@ -4,5 +4,9 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.exclude": {
+			// Update any patterns that specifically included or excluded fastapi_ap.py
+		}
+	}
 }

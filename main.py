@@ -305,6 +305,11 @@ async def startup():
         cyberherd_service=cyberherd_service
     )
     
+    # Initialize health routes with the cyberherd_listener_service
+    health_routes.initialize_services(
+        cyberherd_listener_service=cyberherd_listener_service
+    )
+    
     # Include routers
     app.include_router(payment_routes.router)
     app.include_router(cyberherd_routes.router)

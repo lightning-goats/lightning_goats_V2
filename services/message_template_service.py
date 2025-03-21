@@ -87,7 +87,7 @@ class MessageTemplateService:
             categories = [
                 "cyber_herd", "cyber_herd_info", "cyber_herd_treats", 
                 "interface_info", "sats_received", "feeder_triggered", 
-                "thank_you_variations", "dm_missing_nip05", "dm_invalid_nip05"
+                "thank_you_variations", "dm_missing_nip05", "dm_invalid_nip05"  # NIP-05 related templates
             ]
             
             missing_categories = []
