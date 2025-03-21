@@ -101,8 +101,6 @@ Start the FastAPI server:
 /usr/bin/gunicorn -w 1 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8090
 ```
 
-The application will be available at http://localhost:8000
-
 ## API Endpoints
 
 - `/payments/` - Payment-related endpoints
