@@ -1,0 +1,34 @@
+# Web Framework
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+
+# HTTP and WebSockets
+httpx[http2]>=0.24.0
+websockets>=11.0.0
+
+# Data Validation
+pydantic>=1.10.7,<2.0.0
+
+# Database
+sqlalchemy>=2.0.0
+aiosqlite>=0.19.0
+databases>=0.7.0  # Async database support
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Cryptography
+cryptography>=40.0.0
+# Use coincurve as the primary option (pure Python, fewer build dependencies)
+coincurve>=18.0.0
+secp256k1>=0.14.0; platform_system != "Windows"
+
+# Utilities
+tenacity>=8.0.0  # For retry functionality
+
+# Optional Development Tools
+# pytest>=7.3.1
+# pytest-asyncio>=0.21.0
+# black>=23.3.0
+# isort>=5.12.0
+# mypy>=1.2.0
