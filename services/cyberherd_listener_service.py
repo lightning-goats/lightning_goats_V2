@@ -3,6 +3,7 @@ import logging
 import json
 import subprocess
 import random
+import time  # Add missing time import
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Callable, Set, List, Tuple
 
@@ -281,9 +282,10 @@ class CyberherdListenerService:
 
             logger.info(f"Handling event: event_id={note}, pubkey={pubkey}, kind={kind}, amount={amount}")
 
-            # Only process kind 6 and kind 7; ignore other kinds
+
+            # Only process kind 6, 7; ignore other kinds
             if kind not in (6, 7):
-                logger.debug(f"Kind {kind} is not 6 or 7; ignoring event {note}.")
+                logger.debug(f"Kind {kind} is not 6, 7; ignoring event {note}.")
                 return
 
             # Skip if pubkey is our own public key
@@ -304,16 +306,22 @@ class CyberherdListenerService:
                 return
 
             # Check if this is an existing member - try cache first then database
-            existing_member = self._get_cached_member(pubkey)
-            if not existing_member and self.database_service:
-                existing_member = await self.database_service.get_cyberherd_member(pubkey)
-                if existing_member:
-                    self._update_member_cache(pubkey, existing_member)
-            
-            # For kind 7 (reactions) from non-members, just track for analytics without further processing
-            if kind == 7 and not existing_member:
-                logger.info(f"Kind 7 reaction from non-member {pubkey}. Tracking event only.")
+            existing_member = None
+            if self.database_service:
+                # Try cache first
+                existing_member = self._get_cached_member(pubkey)
                 
+                # If not in cache, check database
+                if not existing_member:
+                    try:
+                        existing_member = await self.database_service.get_cyberherd_member(pubkey)
+                        if existing_member:
+                            self._update_member_cache(pubkey, existing_member)
+                    except Exception as e:
+                        logger.error(f"Error checking for existing member {pubkey}: {e}")
+
+            # Special handling for kind 7 (reactions) from non-members
+            if kind == 7 and not existing_member:
                 # Extract the original note reference from e tags for tracking purposes
                 original_note_id = self._extract_original_note_id(data)
                 
@@ -437,7 +445,7 @@ class CyberherdListenerService:
                 logger.error(f"Unexpected error during nprofile encoding: {e}")
 
         except Exception as e:
-            logger.error(f"Unexpected error in handle_event: {e}")
+            logger.error(f"Unexpected error in handle_event: {e}", exc_info=True)  # Added exc_info for better debugging
 
     def _extract_original_note_id(self, data: Dict[str, Any]) -> Optional[str]:
         """Extract the original note ID from event tags"""
@@ -653,7 +661,7 @@ class CyberherdListenerService:
     async def execute_subprocess(self, id_output: str, created_at_output: str) -> None:
         """
         Execute a subprocess to process events asynchronously.
-        Handles kind 6 and kind 7 events.
+        Handles kind 6, kind 7.
         """
         relay_str = " ".join(DEFAULT_RELAYS)
         command = (
@@ -685,6 +693,7 @@ class CyberherdListenerService:
                         if data.get("kind") in (6, 7):
                             logger.debug(f"Processing event of kind {data.get('kind')}, ID: {note}")
                             await self.handle_event(data)
+                            await self.handle_event(data)
 
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to parse JSON line: {line.strip()}, error: {e}")
@@ -702,7 +711,7 @@ class CyberherdListenerService:
         """
         Monitor events and process them asynchronously.
         Focuses on new notes that have #CyberHerd or CyberHerd tags,
-        then spawns subprocesses to fetch kind 6 and kind 7 events.
+        then spawns subprocesses to fetch kind 6, 7 events.
         """
         midnight_today = int(datetime.combine(datetime.now().date(), datetime.min.time()).timestamp())
         tag_string = " ".join(f"-t t={tag}" for tag in self.tags)

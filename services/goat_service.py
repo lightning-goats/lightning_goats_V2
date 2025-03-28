@@ -108,3 +108,34 @@ class GoatStateService:
         except Exception as e:
             logger.error(f"Unexpected error setting GoatSats: {e}")
             return False
+
+    async def update_sats_sum(self, new_amount: int) -> bool:
+        """
+        Update the total GoatSatsSum counter in OpenHAB.
+        
+        Args:
+            new_amount: New total satoshis amount to set
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if new_amount < 0:
+                logger.warning(f"Rejected negative amount: {new_amount}")
+                return False
+                
+            # Update the GoatSatsSum item in OpenHAB
+            success = await self.openhab.update_item_state(
+                "GoatSatsSum", 
+                str(new_amount)
+            )
+            
+            if success:
+                logger.info(f"Updated GoatSatsSum to {new_amount} sats")
+                return True
+            else:
+                logger.error(f"Failed to update GoatSatsSum in OpenHAB")
+                return False
+        except Exception as e:
+            logger.error(f"Error updating GoatSatsSum: {e}")
+            return False

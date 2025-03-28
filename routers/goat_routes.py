@@ -74,6 +74,35 @@ async def set_goat_sats(
         logger.error(f"Unexpected error setting GoatSats: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error setting GoatSats")
 
+@router.put("/sats/sum")
+async def set_goat_sats_sum(
+    data: SetGoatSatsData,
+    goat_service: GoatStateService = Depends(get_goat_service)
+) -> Dict[str, Any]:
+    """
+    Update the total GoatSatsSum counter in OpenHAB.
+    
+    - **new_amount**: New total satoshis to set
+    
+    Returns:
+    - Status message confirming update
+    """
+    try:
+        if data.new_amount < 0:
+            raise HTTPException(status_code=400, detail="Amount cannot be negative")
+            
+        success = await goat_service.update_sats_sum(data.new_amount)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update GoatSatsSum")
+            
+        return {"status": "success", "new_state": data.new_amount}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error setting GoatSatsSum: {e}")
+        raise HTTPException(status_code=500, detail="Unexpected error setting GoatSatsSum")
+
 @router.get("/feedings")
 async def get_goat_feedings(
     goat_service: GoatStateService = Depends(get_goat_service)

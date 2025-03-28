@@ -176,8 +176,8 @@ class CyberHerdService:
         """Calculate payout increments and updated kinds string."""
         payout_increment = 0.0
 
-        # Zap-based payout
-        if 9734 in kinds_int:
+        # Zap-based payout for both zap request and receipt
+        if 9734 in kinds_int or 9735 in kinds_int:
             zap_payout = self.calculate_payout(float(new_amount))
             payout_increment += zap_payout
 
@@ -423,15 +423,16 @@ class CyberHerdService:
         
         # Only allow members with qualifying actions:
         # - kind 6 (reposts)
-        # - kind 9734 (zaps)
+        # - kind 9734 (zap requests)
+        # - kind 9735 (zap receipts)
         # - Any member with lud16 and a kind set (for manual additions)
-        if not (any(k in [6, 9734] for k in kinds_int) or 
+        if not (any(k in [6, 9734, 9735] for k in kinds_int) or 
                 (item_dict.get('lud16') and item_dict['kinds'])):
             self.logger.warning(f"Member {pubkey} does not qualify for membership: no eligible kinds")
             return None, None
         
         # Calculate payouts based on kind
-        if 9734 in kinds_int:
+        if 9734 in kinds_int or 9735 in kinds_int:
             if 'amount' in item_dict and item_dict['amount'] > 0:
                 item_dict['payouts'] = self.calculate_payout(float(item_dict['amount']))
             else:
@@ -491,7 +492,7 @@ class CyberHerdService:
         logger.debug(f"Parsed kinds for pubkey {pubkey}: {kinds_int}")
 
         # Only process if special kinds are present
-        if not any(kind in [6, 7, 9734] for kind in kinds_int):
+        if not any(kind in [6, 7, 9734, 9735] for kind in kinds_int):
             return None, None
             
         current_kinds = self.parse_current_kinds(result["kinds"])
@@ -546,7 +547,7 @@ class CyberHerdService:
                     logger.debug(f"Note {original_note_id} already reacted to by {pubkey}, not counting again")
         
         # For zap events, calculate as usual
-        if 9734 in kinds_int:
+        if 9734 in kinds_int or 9735 in kinds_int:
             zap_payout = self.calculate_payout(float(new_amount))
             payout_increment += zap_payout
 
@@ -679,7 +680,7 @@ class CyberHerdService:
             current_size = await self.database.get_cyberherd_size()
             spots_remaining = max(0, self.max_herd_size - current_size)
             can_add_members = current_size < self.max_herd_size
-
+            
             # Verify raw items are properly formatted
             items_to_process = []
             for item in data_items:
@@ -740,15 +741,23 @@ class CyberHerdService:
                 self.logger.info(f"Updating {len(targets)} payment targets")
                 await self.update_lnbits_targets_background(targets)
 
-            # Send notifications
-            await self.process_notifications(notifications, 
-                                          self.trigger_amount - await self._get_current_balance(),
-                                          current_size)
+            # IMPORTANT FIX: Recalculate current size and spots remaining AFTER processing all members
+            updated_size = await self.database.get_cyberherd_size()
+            updated_spots_remaining = max(0, self.max_herd_size - updated_size)
 
+            # Send notifications with the updated spots remaining - FIX: add the missing updated_size parameter
+            await self.process_notifications(
+                notifications,
+                self.trigger_amount - await self._get_current_balance(),
+                updated_size
+            )
+
+            # Return the accurate spots remaining in the response
             return {
                 "status": "success", 
                 "message": f"Processed {len(items_to_process)} items", 
-                "new_items": len(notifications)
+                "new_items": len(notifications),
+                "spots_remaining": updated_spots_remaining
             }
         except Exception as e:
             self.logger.error(f"Error updating CyberHerd: {e}", exc_info=True)
@@ -1173,8 +1182,8 @@ class CyberHerdService:
                     except Exception:
                         continue
                         
-                    # Check if this member qualifies (has kind 6 or 9734)
-                    if not (6 in kinds_list or 9734 in kinds_list):
+                    # Check if this member qualifies (has kind 6,9734 or 9735)
+                    if not (6 in kinds_list or 9734 in kinds_list or 9735 in kinds_list):
                         self.logger.debug(f"Member {pubkey} doesn't have qualifying kinds: {kinds_list}")
                         continue
                         
@@ -1206,3 +1215,18 @@ class CyberHerdService:
                             self.logger.error(f"Error adding member {member.get('pubkey')}: {e}")
         except Exception as e:
             self.logger.error(f"Error in _sync_cyberherd_members: {e}", exc_info=True)
+    
+    async def get_spots_remaining(self) -> int:
+        """
+        Calculate the number of spots remaining in the CyberHerd.
+        This method ensures we get the latest count from the database.
+        
+        Returns:
+            int: Number of spots remaining
+        """
+        try:
+            current_size = await self.database.get_cyberherd_size()
+            return max(0, self.max_herd_size - current_size)
+        except Exception as e:
+            logger.error(f"Error calculating spots remaining: {e}")
+            return 0

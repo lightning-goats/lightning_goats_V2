@@ -20,13 +20,15 @@ class PaymentProcessorService:
         goat_service: GoatStateService, 
         cyberherd_service: CyberHerdService,
         messaging_service: MessagingService,
-        trigger_amount: int = 1250
+        trigger_amount: int = 1250,
+        process_zaps: bool = True  # Add configuration option to enable/disable zap processing
     ):
         self.payment_service = payment_service
         self.goat_service = goat_service
         self.cyberherd_service = cyberherd_service
         self.messaging_service = messaging_service
         self.trigger_amount = trigger_amount
+        self.process_zaps = process_zaps  # Store the configuration
         self.balance = 0
         self.balance_lock = Lock()
         
@@ -81,17 +83,22 @@ class PaymentProcessorService:
             elif sats_received > 0:
                 logger.info(f"Skipping GoatSats update for internal payment: {checking_id}")
 
-            # Process nostr data if present
+            # Process nostr data if present and zap processing is enabled
             feeder_triggered = False
             new_cyberherd_record_created = False
             
             # Extract nostr data from payment extras
             nostr_data_raw = self._extract_nostr_data(payment)
             
-            if nostr_data_raw:
-                # Process nostr data (zaps)
-                cyberherd_result = await self._process_nostr_data(nostr_data_raw, sats_received)
-                new_cyberherd_record_created = cyberherd_result.get("success", False)
+            if nostr_data_raw and self.process_zaps:
+                # Process nostr data (zaps) if enabled
+                if sats_received > 21:  # Minimum zap amount is 21 sats
+                    logger.info(f"Processing zap data: {nostr_data_raw}")
+                    cyberherd_result = await self._process_nostr_data(nostr_data_raw, sats_received)
+                    new_cyberherd_record_created = cyberherd_result.get("success", False)
+            elif nostr_data_raw and not self.process_zaps:
+                # Log that we're skipping zap processing due to configuration
+                logger.info(f"Skipping zap processing due to configuration (process_zaps=False)")
 
             # Handle feeder triggering if applicable
             if sats_received > 0 and not await self.goat_service.get_feeder_override_status():
@@ -139,6 +146,9 @@ class PaymentProcessorService:
             pubkey = nostr_data.get('pubkey')
             note = nostr_data.get('id')
             event_kind = nostr_data.get('kind')
+            
+            # We specifically handle zap requests (kind 9734) here
+            # Zap receipts (kind 9735) are handled by the cyberherd_listener_service
             kinds = [event_kind] if event_kind is not None else []
             
             # Extract event_id from tags

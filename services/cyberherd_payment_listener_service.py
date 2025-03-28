@@ -133,6 +133,20 @@ class CyberherdPaymentListenerService(WebSocketManager):
                 logger.warning(f"Member with pubkey {pubkey} not found in database")
                 return
             
+            # Get the current remaining spots - this is the crucial addition
+            spots_remaining = 0
+            try:
+                cyber_herd_size = await self.database_service.get_cyberherd_size()
+                # Get max_herd_size from database service
+                # This assumes the CyberHerdService instance is available via database_service
+                cyberherd_service = await self.database_service.get_cyberherd_service()
+                if cyberherd_service:
+                    spots_remaining = cyberherd_service.max_herd_size - cyber_herd_size
+                    spots_remaining = max(0, spots_remaining)
+                    logger.info(f"Calculated spots_remaining: {spots_remaining}")
+            except Exception as e:
+                logger.error(f"Error getting spots remaining for DM: {e}")
+            
             # Get template for cyberherd_treats from message template service
             content = ""
             if self.message_template_service:
@@ -145,7 +159,8 @@ class CyberherdPaymentListenerService(WebSocketManager):
                         content = template.format(
                             name=member.get("display_name", "Anon"),
                             new_amount=amount,
-                            difference=0  # No difference for treats
+                            difference=0,  # No difference for treats
+                            spots_remaining=spots_remaining  # Include spots_remaining in the template
                         )
                         logger.debug(f"Using template for DM: {content}")
                 except Exception as e:
@@ -155,7 +170,9 @@ class CyberherdPaymentListenerService(WebSocketManager):
             # ADDED: Fallback content if template retrieval fails
             if not content:
                 display_name = member.get("display_name", "Anon")
-                content = f"You've received {amount} sats, {display_name}! Thanks for being part of the ⚡ CyberHerd ⚡.\n\n https://lightning-goats.com\n\n"
+                # Include spots_remaining in the fallback message
+                spots_text = f" ({spots_remaining} spots remaining)" if spots_remaining > 0 else ""
+                content = f"You've received {amount} sats, {display_name}! Thanks for being part of the ⚡ CyberHerd ⚡{spots_text}.\n\n https://lightning-goats.com\n\n"
                 logger.info(f"Using fallback template for DM to {pubkey}")
 
             # Construct the nak command to send a DM (kind 4)

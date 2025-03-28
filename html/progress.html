@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>js overlay</title>
+  <meta charset="UTF-8">
+  <link rel="icon" href="data:," type="image/x-icon">
+  <link rel="stylesheet" href="css/progress.css">
+  <!-- GSAP Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.10.4/gsap.min.js" defer></script>
+  <script src="js/progress.js" defer></script>
+</head>
+<body>
+  <div id="container">
+    <div id="feeder-triggered" style="display: none;">⚡ Feeder Triggered ⚡</div>
+    
+    <div id="top-left-container">
+      <span id="goat-feedings">The goats have been fed 0 times today.</span>
+      <span id="spots-remaining"></span>
+      <span id="sats_left">⚡0 sats to go until the herd is fed again.⚡</span>
+    </div>
+    
+    <div id="qr-code">
+      <img src="images/qr.png" width="180" height="180" style="border-radius: 18px;">
+      <img id="lightning-img" src="images/lightning.png" width="177" height="177" style="border-radius: 18px; display: none;">
+      <div id="sats-received-overlay"></div>
+    </div>
+    
+    <div id="content">
+      <div id="bottom-container">
+        <div id="time-temperature-container">
+          <div id="current-time">--:--</div>
+          <div id="current-temperature">-- °F</div>
+        </div>
+        <div id="center-container">
+          <div id="progress-container">
+            <div id="progress-fill"></div>
+            <div id="progress-text">0%</div>
+            <div id="scrolling-comment"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="accordion-container" style="display: none;"></div>
+    <div id="lightning-effect"></div>
+  </div>
+</body>
+</html>

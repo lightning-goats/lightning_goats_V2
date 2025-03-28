@@ -631,6 +631,165 @@ class DatabaseService:
             self.logger.error(f"Error adding timestamp column: {e}")
             return False
 
+    async def create_l402_tables(self):
+        """Create tables for L402 tokens"""
+        queries = [
+            """
+            CREATE TABLE IF NOT EXISTS l402_tokens (
+                token_id TEXT PRIMARY KEY,
+                payment_hash TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                user_id TEXT,
+                metadata TEXT,
+                is_paid BOOLEAN NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_l402_payment_hash 
+            ON l402_tokens(payment_hash)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_l402_user_id 
+            ON l402_tokens(user_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_l402_resource_id 
+            ON l402_tokens(resource_id)
+            """
+        ]
+        
+        for query in queries:
+            await self.database.execute(query)
+    
+    async def store_l402_token(self, token_data):
+        """Store a new L402 token"""
+        metadata_json = json.dumps(token_data.get('metadata', {}))
+        
+        query = """
+        INSERT INTO l402_tokens (
+            token_id, payment_hash, resource_id, amount, 
+            created_at, expires_at, user_id, metadata, is_paid
+        ) VALUES (
+            :token_id, :payment_hash, :resource_id, :amount,
+            :created_at, :expires_at, :user_id, :metadata, :is_paid
+        )
+        """
+        
+        values = {
+            'token_id': token_data['token_id'],
+            'payment_hash': token_data['payment_hash'],
+            'resource_id': token_data['resource_id'],
+            'amount': token_data['amount'],
+            'created_at': token_data['created_at'],
+            'expires_at': token_data['expires_at'],
+            'user_id': token_data.get('user_id'),
+            'metadata': metadata_json,
+            'is_paid': token_data.get('is_paid', False)
+        }
+        
+        await self.database.execute(query, values)
+        
+    async def get_l402_token(self, token_id):
+        """Get a single L402 token by ID"""
+        query = "SELECT * FROM l402_tokens WHERE token_id = :token_id"
+        row = await self.database.fetch_one(query, {'token_id': token_id})
+        
+        if not row:
+            return None
+            
+        result = dict(row)
+        
+        # Parse the metadata JSON
+        if result.get('metadata'):
+            try:
+                result['metadata'] = json.loads(result['metadata'])
+            except:
+                result['metadata'] = {}
+                
+        return result
+    
+    async def get_l402_tokens(self, filters=None):
+        """Get L402 tokens matching the filters"""
+        filters = filters or {}
+        
+        query = "SELECT * FROM l402_tokens WHERE 1=1"
+        params = {}
+        
+        if 'user_id' in filters:
+            query += " AND user_id = :user_id"
+            params['user_id'] = filters['user_id']
+            
+        if 'resource_id' in filters:
+            query += " AND resource_id = :resource_id"
+            params['resource_id'] = filters['resource_id']
+            
+        if 'is_paid' in filters:
+            query += " AND is_paid = :is_paid"
+            params['is_paid'] = filters['is_paid']
+            
+        if 'payment_hash' in filters:
+            query += " AND payment_hash = :payment_hash"
+            params['payment_hash'] = filters['payment_hash']
+            
+        if 'expires_at_min' in filters:
+            query += " AND expires_at > :expires_at_min"
+            params['expires_at_min'] = filters['expires_at_min']
+            
+        if 'expires_at_max' in filters:
+            query += " AND expires_at < :expires_at_max"
+            params['expires_at_max'] = filters['expires_at_max']
+            
+        rows = await self.database.fetch_all(query, params)
+        
+        result = []
+        for row in rows:
+            item = dict(row)
+            
+            # Parse the metadata JSON
+            if item.get('metadata'):
+                try:
+                    item['metadata'] = json.loads(item['metadata'])
+                except:
+                    item['metadata'] = {}
+                    
+            result.append(item)
+            
+        return result
+    
+    async def update_l402_token_status(self, token_id, update_data):
+        """Update the status of an L402 token"""
+        set_clauses = []
+        params = {'token_id': token_id}
+        
+        for key, value in update_data.items():
+            if key in ['is_paid', 'expires_at']:
+                set_clauses.append(f"{key} = :{key}")
+                params[key] = value
+                
+        if not set_clauses:
+            return False
+            
+        query = f"""
+        UPDATE l402_tokens 
+        SET {', '.join(set_clauses)}
+        WHERE token_id = :token_id
+        """
+        
+        await self.database.execute(query, params)
+        return True
+    
+    async def is_l402_payment_settled(self, payment_hash):
+        """Check if a payment is already settled"""
+        query = """
+        SELECT is_paid FROM l402_tokens 
+        WHERE payment_hash = :payment_hash
+        """
+        
+        row = await self.database.fetch_one(query, {'payment_hash': payment_hash})
+        return row and row['is_paid']
 
 class DatabaseCache:
     def __init__(self, db):

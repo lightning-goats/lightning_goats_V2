@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
 import logging
 import json
 from typing import Dict, Any, Callable, Awaitable
@@ -6,6 +6,9 @@ from typing import Dict, Any, Callable, Awaitable
 from services.messaging_service import MessagingService
 
 logger = logging.getLogger(__name__)
+
+# Reference to the messaging service
+_messaging_service = None
 
 def register_websocket_routes(app: FastAPI, messaging_service: MessagingService):
     """
@@ -18,6 +21,8 @@ def register_websocket_routes(app: FastAPI, messaging_service: MessagingService)
         app: The FastAPI app instance
         messaging_service: The messaging service for handling WebSocket connections
     """
+    global _messaging_service
+    _messaging_service = messaging_service
     
     @app.get("/ws", tags=["websocket"])
     async def websocket_info():
@@ -43,48 +48,36 @@ def register_websocket_routes(app: FastAPI, messaging_service: MessagingService)
         1. Broadcasts important app events to all connected clients
         2. Receives commands from clients (future feature)
         """
+        logger.info(f"WebSocket connection request from {websocket.client}")
+        
         try:
-            # Accept the connection and register the client
-            await messaging_service.connect_client(websocket)
+            # Accept the connection without any validation
+            await _messaging_service.connect_client(websocket)
             
-            # Send a welcome message to the client
-            await websocket.send_text(json.dumps({
-                "type": "connection_established",
-                "message": "Connected to Lightning Goats WebSocket server",
-                "client_count": len(messaging_service.connected_clients)
-            }))
-            
-            # Keep the connection alive and handle incoming messages
-            while True:
-                try:
+            # Keep the connection alive
+            try:
+                while True:
                     # Wait for messages from the client
-                    message = await websocket.receive_text()
+                    data = await websocket.receive_text()
                     
-                    # Process client commands (future feature)
-                    if message.strip():
-                        logger.debug(f"Received message from client: {message}")
-                        # Currently just echo the message back
-                        await websocket.send_text(json.dumps({
-                            "type": "echo",
-                            "content": message
-                        }))
-                
-                except WebSocketDisconnect:
-                    logger.info("WebSocket disconnected normally")
-                    break
-                except Exception as e:
-                    logger.warning(f"Error receiving message: {e}")
-                    await websocket.send_text(json.dumps({
-                        "type": "error", 
-                        "message": "Error processing your message"
-                    }))
-        
+                    # Handle client messages
+                    if data == "ping":
+                        await websocket.send_text('{"type":"pong"}')
+                    # Ignore other messages for now
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket client disconnected normally: {websocket.client}")
+            except Exception as e:
+                logger.error(f"Error in websocket communication: {e}")
         except Exception as e:
-            logger.warning(f"WebSocket connection error: {e}")
-        
+            logger.error(f"Failed to establish WebSocket connection: {e}")
+            # Try to close the connection if it's still open
+            try:
+                await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            except:
+                pass
         finally:
-            # Always clean up the connection
-            messaging_service.disconnect_client(websocket)
+            # Always ensure client is properly disconnected
+            _messaging_service.disconnect_client(websocket)
     
     @app.websocket("/ws/status")
     async def websocket_status(websocket: WebSocket):

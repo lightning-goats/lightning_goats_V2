@@ -87,7 +87,8 @@ class MessageTemplateService:
             categories = [
                 "cyber_herd", "cyber_herd_info", "cyber_herd_treats", 
                 "interface_info", "sats_received", "feeder_triggered", 
-                "thank_you_variations", "dm_missing_nip05", "dm_invalid_nip05"  # NIP-05 related templates
+                "thank_you_variations", "dm_missing_nip05", "dm_invalid_nip05",
+                "l402_access"  # Added L402 category to check
             ]
             
             missing_categories = []
@@ -113,15 +114,31 @@ class MessageTemplateService:
                 for key, template in default_difference_templates.items():
                     await self.database.save_message_template("difference_variations", key, template)
                     logger.info(f"Added difference template {key}: {template}")
-                
-                # Clear cache to ensure templates are reloaded
-                self.cache.clear()
             
+            # Add missing templates for other categories
+            if "l402_access" in missing_categories:
+                logger.info("Adding default L402 access templates")
+                l402_templates = {
+                    1: "{user_id} has accessed {resource_id} - access valid for {remaining_minutes} minutes",
+                    2: "New Lightning payment received! {user_id} has unlocked access to {resource_id}",
+                    3: "⚡ {user_id} just unlocked premium content '{resource_id}' with Lightning ⚡"
+                }
+                
+                for key, template in l402_templates.items():
+                    await self.database.save_message_template("l402_access", key, template)
+                    logger.info(f"Added L402 template {key}: {template}")
+            
+            # Handle other missing categories if needed
+            # ...
+                
             if missing_categories:
                 logger.warning(f"Missing templates for categories: {', '.join(missing_categories)}. "
                               f"Please run migration script to populate templates.")
             else:
                 logger.info("All required message templates found in database")
+                
+            # Clear cache to ensure templates are reloaded
+            self.cache.clear()
                 
         except Exception as e:
             logger.error(f"Failed to check templates: {e}")

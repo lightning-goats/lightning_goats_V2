@@ -46,6 +46,9 @@ class MessagingService:
                 "26c261209d79601d6c2377248e5d249d90f4930c72702fd100fb7c772c7ed91b"
             ]
         }
+        
+        # Add list to track payment listeners
+        self.payment_listeners = []
 
     # WebSocket client management
     async def connect_client(self, websocket: WebSocket) -> None:
@@ -87,6 +90,14 @@ class MessagingService:
             parsed_message = json.loads(message)
             message_type = parsed_message.get("type", "unknown")
             json_message = message
+            
+            # If this is a payment-related event, notify payment listeners
+            if message_type in ["payment", "payment_received", "payment_event", "l402_access"]:
+                for listener in self.payment_listeners:
+                    try:
+                        await listener(parsed_message)
+                    except Exception as e:
+                        self.logger.error(f"Error in payment listener: {e}")
         except (json.JSONDecodeError, TypeError):
             # If not JSON, wrap it in a legacy format for backwards compatibility
             json_message = json.dumps({
@@ -244,7 +255,7 @@ class MessagingService:
         self.logger.debug(f"Creating message of type '{event_type}' with amount={new_amount}, difference={difference}")
         
         if not relays:
-            relays = self.default_relays
+            relays = DEFAULT_RELAYS
         
         # Fix: Properly clean and format relay URLs before joining them
         # This ensures any spaces or formatting issues are removed
@@ -291,6 +302,14 @@ class MessagingService:
             # Call the method in CyberHerd service instead of locally
             if self.cyberherd_service:
                 await self.cyberherd_service.ensure_complete_cyberherd_data(self)
+                
+                # FIX: Get the latest spots remaining count AFTER the member has been added
+                if spots_remaining <= 0:
+                    try:
+                        spots_remaining = await self.cyberherd_service.get_spots_remaining()
+                        self.logger.debug(f"Updated spots_remaining to {spots_remaining} from cyberherd_service")
+                    except Exception as e:
+                        self.logger.error(f"Error getting latest spots_remaining: {e}")
             else:
                 # Fallback to direct database load if no cyberherd service
                 await self.load_all_cyberherd_members(force_reload=True)
@@ -317,7 +336,35 @@ class MessagingService:
 
             name = nprofile if nprofile else display_name
 
-            # Spots info
+            # CRITICAL FIX: Query the database directly for the current count
+            # This ensures we get the absolute latest value AFTER all database operations
+            if self.database_service:
+                try:
+                    # Get current count directly from database
+                    current_size = await self.database_service.get_cyberherd_size()
+                    # Calculate spots remaining based on the cyberherd service max size
+                    max_size = 10  # Default
+                    if self.cyberherd_service:
+                        max_size = getattr(self.cyberherd_service, 'max_herd_size', 10)
+                    
+                    # Calculate spots directly
+                    spots_remaining = max(0, max_size - current_size)
+                    self.logger.info(f"DIRECT DB QUERY: current_size={current_size}, max_size={max_size}, spots_remaining={spots_remaining}")
+                except Exception as e:
+                    self.logger.error(f"Error getting direct DB count: {e}")
+            
+            # Additional fallback - if we have the cyberherd_service, double-check the spots
+            if self.cyberherd_service:
+                try:
+                    latest_spots = await self.cyberherd_service.get_spots_remaining()
+                    if latest_spots != spots_remaining:
+                        self.logger.warning(f"Spots count mismatch! DB says {spots_remaining}, service says {latest_spots}")
+                    spots_remaining = latest_spots  # Use the service value as final authority
+                    self.logger.info(f"FINAL spots_remaining from service: {spots_remaining}")
+                except Exception as e:
+                    self.logger.error(f"Error getting latest spots_remaining: {e}")
+            
+            # Spots info with verified count
             spots_info = ""
             if spots_remaining > 1:
                 spots_info = f"⚡ {spots_remaining} more spots available. ⚡"
@@ -545,6 +592,31 @@ class MessagingService:
             
             command = None
             
+        # Add support for L402 access messages
+        if event_type == "l402_access":
+            template = await self._get_template_text("l402_access")
+            if template:
+                resource_id = cyber_herd_item.get("resource_id", "unknown resource")
+                user_id = cyber_herd_item.get("user_id", "anonymous")
+                expires_at = cyber_herd_item.get("expires_at", 0)
+                
+                # Calculate remaining time
+                now = int(time.time())
+                remaining_seconds = max(0, expires_at - now)
+                remaining_minutes = remaining_seconds // 60
+                
+                message = template.format(
+                    resource_id=resource_id,
+                    user_id=user_id,
+                    remaining_minutes=remaining_minutes
+                )
+                
+                return json.dumps({
+                    "type": "l402_access",
+                    "message": message,
+                    "data": cyber_herd_item
+                }), None
+
         # Execute command if needed - BUT DON'T MAKE WEB CLIENTS WAIT FOR IT
         command_output = None
         if command:
@@ -706,3 +778,81 @@ class MessagingService:
         except (json.JSONDecodeError, asyncio.SubprocessError) as e:
             self.logger.error(f"Error processing event {event_id}: {str(e)}")
             return None
+
+    def add_payment_listener(self, listener_function):
+        """
+        Add a function to be called when payment events are received
+        
+        Args:
+            listener_function: Async function that takes payment event data
+        """
+        if callable(listener_function) and listener_function not in self.payment_listeners:
+            self.payment_listeners.append(listener_function)
+            self.logger.info(f"Added payment listener: {listener_function.__qualname__}")
+            return True
+        return False
+
+    def remove_payment_listener(self, listener_function):
+        """
+        Remove a payment listener function
+        
+        Args:
+            listener_function: The function to remove
+        """
+        if listener_function in self.payment_listeners:
+            self.payment_listeners.remove(listener_function)
+            return True
+        return False
+
+    async def handle_payment_notification(self, payment_data: Dict[str, Any], payment_result: Dict[str, Any]) -> None:
+        """
+        Handle and forward payment notifications to connected clients
+        
+        Args:
+            payment_data: Raw payment data from the websocket
+            payment_result: Result from payment processing
+        """
+        try:
+            # Only notify for actual inbound payments
+            payment = payment_data.get('payment', {})
+            amount = payment.get('amount', 0) // 1000  # Convert msats to sats
+            
+            if amount > 0:
+                try:
+                    # Create a client-friendly payment notification with enhanced data
+                    notification = {
+                        "type": "payment_notification",
+                        "data": {
+                            "amount": amount,
+                            "payment_hash": payment.get('checking_id', ''),
+                            "memo": payment.get('memo', ''),
+                            "timestamp": payment.get('time', 0),
+                            "wallet_balance": payment_data.get('wallet_balance'),
+                            "feeder_triggered": payment_result.get("feeder_triggered", False),
+                            "cyberherd_updated": payment_result.get("cyberherd_updated", False),
+                            # Add more useful fields specifically for L402
+                            "preimage": payment.get('preimage', payment.get('details', {}).get('preimage')),
+                            "description_hash": payment.get('description_hash'),
+                            "checking_id": payment.get('checking_id'),
+                            "invoice": payment.get('bolt11', payment.get('payment_request'))
+                        }
+                    }
+                    
+                    # Log the notification for debugging
+                    self.logger.debug(f"Sending payment notification: payment_hash={notification['data']['payment_hash']}, preimage={(notification['data']['preimage'] or 'none')[:10]}...")
+                    
+                    # Send to all connected clients
+                    await self.send_message_to_clients(json.dumps(notification))
+                    self.logger.info(f"Payment notification sent to clients: {amount} sats")
+                    
+                    # Call any registered payment listeners
+                    for listener in self.payment_listeners:
+                        try:
+                            await listener(notification)
+                        except Exception as listener_error:
+                            self.logger.error(f"Error in payment listener: {listener_error}")
+                            
+                except Exception as notify_error:
+                    self.logger.error(f"Error sending payment notification: {notify_error}")
+        except Exception as e:
+            self.logger.error(f"Error handling payment notification: {e}")

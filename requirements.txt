@@ -32,3 +32,12 @@ tenacity>=8.0.0  # For retry functionality
 # black>=23.3.0
 # isort>=5.12.0
 # mypy>=1.2.0
+
+# Protocol Buffers - Fix version to avoid compatibility issues
+protobuf==3.20.3
+
+# L402 Authentication
+pymacaroons>=0.13.0
+# Remove other macaroon libraries
+# macaroonbakery>=1.3.1
+# macaroonpy>=0.1.0

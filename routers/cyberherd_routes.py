@@ -138,20 +138,21 @@ async def reset_cyberherd(
 
 @router.get("/spots_remaining")
 async def get_spots_remaining(
+    database_service: DatabaseService = Depends(get_database_service),
     cyberherd_service: CyberHerdService = Depends(get_cyberherd_service)
-) -> Dict[str, int]:
-    """
-    Get the number of spots remaining in the CyberHerd.
+):
+    """Get the number of spots remaining in the CyberHerd."""
+    current_size = await database_service.get_cyberherd_size()
+    max_size = getattr(cyberherd_service, 'max_herd_size', 10)  # Default to 10 if not set
     
-    Returns:
-    - **spots_remaining**: Number of spots remaining
-    """
-    try:
-        spots_remaining = await cyberherd_service.get_remaining_spots()
-        return {"spots_remaining": spots_remaining}
-    except Exception as e:
-        logger.error(f"Error getting spots remaining: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get remaining spots")
+    # Calculate spots remaining after considering current members
+    spots_remaining = max(0, max_size - current_size)
+    
+    return {
+        "current_size": current_size,
+        "max_size": max_size,
+        "spots_remaining": spots_remaining
+    }
 
 @router.get("/dm_notifications")
 async def get_dm_notifications(
@@ -290,7 +291,7 @@ async def add_member_by_pubkey(
         
         # Fetch metadata for this pubkey from relays
         fetcher = MetadataFetcher()
-        metadata = await fetcher.fetch_user_metadata(pubkey, DEFAULT_RELAYS)
+        metadata = await fetcher.lookup_metadata(pubkey, DEFAULT_RELAYS)
         
         # Determine kinds based on participation
         kinds_str = ",".join(map(str, participation["kinds"])) if participation["kinds"] else "6"

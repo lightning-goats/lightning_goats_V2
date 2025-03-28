@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L402 Test Client</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 20px auto; /* Added top/bottom margin */
+            padding: 20px;
+            line-height: 1.5;
+            color: #333;
+            background-color: #f9f9f9; /* Light background */
+        }
+        .container { display: flex; flex-direction: column; gap: 20px; }
+        .card { background-color: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
+        button { background-color: #ffd700; color: #000; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background-color 0.2s; }
+        button:hover { background-color: #f0c400; }
+        button:disabled { background-color: #e0e0e0; color: #999; cursor: not-allowed; }
+        .resource-content { background-color: #f5f5f5; padding: 15px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; }
+        .token-info { font-family: monospace; font-size: 14px; white-space: pre-wrap; word-break: break-all; background: #eee; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .status { margin-top: 15px; padding: 12px; border-radius: 4px; border: 1px solid transparent; }
+        .status.success { background-color: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
+        .status.error { background-color: #f2dede; color: #a94442; border-color: #ebccd1; }
+        .status.info { background-color: #d9edf7; color: #31708f; border-color: #bce8f1; }
+        .invoice-container { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 20px; }
+        .qr-code { text-align: center; border: 1px solid #eee; padding: 10px; background: white; }
+        .qr-code img { display: block; margin: auto; } /* Center QR code image */
+        .tabs { display: flex; margin-bottom: -1px; /* Overlap border */ }
+        .tab { padding: 10px 20px; border: 1px solid #ddd; border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer; background-color: #eee; margin-right: 5px; }
+        .tab.active { background-color: white; border-bottom: 1px solid white; position: relative; z-index: 1; }
+        .hidden { display: none; }
+        .button-group { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; } /* Added wrap */
+        small { color: #666; }
+        #stored-tokens ul { list-style: none; padding: 0; }
+        #stored-tokens li { border-bottom: 1px solid #eee; padding: 10px 0; }
+        #stored-tokens li:last-child { border-bottom: none; }
+        #stored-tokens button { font-size: 14px; padding: 5px 10px; margin-left: 5px; margin-top: 5px;} /* Adjusted margin */
+    </style>
+</head>
+<body>
+    <h1>⚡ L402 Test Client for Lightning Goats</h1>
+
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" data-tab="request">Request Resource</div>
+            <div class="tab" data-tab="tokens">Stored Tokens</div>
+        </div>
+
+        <div id="request-tab" class="tab-content">
+            <div class="card">
+                <h2>Request Protected Resource</h2>
+                <p>Server: <code>https://lightning-goats.com</code></p> <!-- Display hardcoded URL -->
+                <div class="form-group">
+                    <label for="resource-id">Resource ID:</label>
+                    <select id="resource-id">
+                        <option value="basic-feed">basic-feed</option>
+                        <option value="premium-feed">premium-feed</option>
+                        <option value="another-resource">another-resource</option>
+                        <option value="custom">Custom Resource...</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="custom-resource-group">
+                    <label for="custom-resource">Custom Resource ID:</label>
+                    <input type="text" id="custom-resource" placeholder="e.g., specific-item-123">
+                </div>
+                <!-- Removed Server URL Input -->
+                <!-- Removed Custom Amount Input -->
+                <button id="request-btn">Request Resource</button>
+                 <div id="request-status" class="status hidden"></div>
+            </div>
+
+            <div id="invoice-card" class="card hidden">
+                <h2>Payment Required</h2>
+                <div class="invoice-container">
+                    <div id="qr-code" class="qr-code">Generating QR...</div>
+                    <div class="button-group">
+                        <button id="copy-invoice-btn">Copy Invoice</button>
+                        <button id="open-wallet-btn">Open in Wallet</button>
+                    </div>
+                    <div>
+                        <small>Invoice amount: <span id="invoice-amount">?</span> sats</small>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="invoice">BOLT11 Invoice:</label>
+                    <input type="text" id="invoice" readonly style="background:#f0f0f0;">
+                </div>
+                <div class="form-group">
+                    <label for="payment-hash">Payment Hash:</label>
+                    <input type="text" id="payment-hash" readonly style="background:#f0f0f0;">
+                </div>
+                 <div class="form-group">
+                    <input type="checkbox" id="auto-check" checked>
+                    <label for="auto-check" style="display: inline; font-weight: normal;">Auto-check payment status (every 3s)</label>
+                </div>
+                <div class="button-group">
+                    <button id="check-payment-btn">Check Payment Status Now</button>
+                    <button id="use-preimage-btn">Use Manual Preimage</button>
+                </div>
+                 <div class="form-group" style="margin-top: 15px;">
+                    <label for="preimage">Payment Preimage (optional manual entry):</label>
+                    <input type="text" id="preimage" placeholder="Enter 64-char hex preimage if obtained manually">
+                 </div>
+                <div id="payment-status" class="status info">Awaiting payment...</div>
+            </div>
+
+            <div id="resource-card" class="card hidden">
+                <h2>Protected Resource Accessed</h2>
+                <pre id="resource-content" class="resource-content"></pre>
+                <h3>LSAT Token Information</h3>
+                <div id="token-info" class="token-info"></div>
+                <div class="button-group">
+                    <button id="access-again-btn">Access Again with This Token</button>
+                    <button id="clear-token-btn">Clear This Token</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tokens-tab" class="tab-content hidden">
+            <div class="card">
+                <h2>Stored LSAT Tokens</h2>
+                <div id="stored-tokens"></div>
+                <button id="clear-all-tokens-btn">Clear All Tokens</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global State ---
+        window.currentMacaroon = null; // Stores the macaroon from the 402 challenge
+        window.currentPaymentHash = null; // Stores payment hash from the 402 challenge body
+        window.currentResourceId = null; // Stores the resource ID being accessed
+        window.currentToken = null; // Stores the full valid LSAT token (LSAT mac:pre)
+        let checkInterval = null; // Timer for auto-checking payment status
+
+        // --- Helper Functions ---
+        const showElement = (id) => document.getElementById(id)?.classList.remove('hidden');
+        const hideElement = (id) => document.getElementById(id)?.classList.add('hidden');
+        const setValue = (id, value) => { document.getElementById(id).value = value; };
+        const setContent = (id, text) => { document.getElementById(id).textContent = text; };
+        const setHtml = (id, html) => { document.getElementById(id).innerHTML = html; };
+
+        function setStatus(id, message, type = 'info') {
+            const statusEl = document.getElementById(id);
+            if (!statusEl) return;
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+            showElement(id);
+        }
+
+        function displayQRCode(data) {
+            try {
+                if (!data) {
+                     setHtml('qr-code', '<p style="color: red;">Error: No invoice data for QR code.</p>');
+                     return;
+                }
+                const typeNumber = 0; // Auto-detect size
+                const errorCorrectionLevel = 'L';
+                const qr = qrcode(typeNumber, errorCorrectionLevel);
+                qr.addData(data.toUpperCase()); // Invoices sometimes need uppercasing for QR
+                qr.make();
+                // Smaller QR code (size 4), margin auto centers it
+                setHtml('qr-code', qr.createImgTag(4, 4, "Invoice QR Code"));
+            } catch (e) {
+                 console.error("QR Code generation failed:", e);
+                 setHtml('qr-code', '<p style="color: red;">QR Code Error</p>');
+            }
+        }
+
+        // --- LSAT Token Storage (LocalStorage) ---
+        const LSAT_STORAGE_KEY = 'lsat-tokens';
+
+        function storeToken(resourceId, lsatToken, expiresAt) {
+            if (!resourceId || !lsatToken || !expiresAt) return;
+            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
+            tokens[resourceId] = { token: lsatToken, expiresAt: expiresAt };
+            localStorage.setItem(LSAT_STORAGE_KEY, JSON.stringify(tokens));
+            console.log(`Stored token for ${resourceId}`);
+            updateStoredTokensDisplay(); // Update UI
+        }
+
+        function getStoredToken(resourceId) {
+            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
+            const tokenData = tokens[resourceId];
+            // Check if token exists and is not expired (add small buffer like 5 seconds)
+            if (tokenData && tokenData.expiresAt > (Date.now() / 1000 + 5)) {
+                return tokenData.token;
+            }
+            // If expired, remove it
+            if (tokenData) {
+                 console.log(`Stored token for ${resourceId} is expired. Removing.`);
+                 clearToken(resourceId); // Auto-clear expired token on retrieval attempt
+            }
+            return null;
+        }
+
+        function clearToken(resourceId) {
+            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
+            delete tokens[resourceId];
+            localStorage.setItem(LSAT_STORAGE_KEY, JSON.stringify(tokens));
+            console.log(`Cleared token for ${resourceId}`);
+            updateStoredTokensDisplay();
+        }
+
+        function clearAllTokens() {
+            localStorage.removeItem(LSAT_STORAGE_KEY);
+            console.log('Cleared all stored tokens');
+            updateStoredTokensDisplay();
+        }
+
+        function updateStoredTokensDisplay() {
+            const storedTokensEl = document.getElementById('stored-tokens');
+            if (!storedTokensEl) return;
+            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
+
+            if (Object.keys(tokens).length === 0) {
+                storedTokensEl.innerHTML = '<p>No valid LSAT tokens stored.</p>';
+                return;
+            }
+
+            let html = '<ul>';
+            const now = Date.now() / 1000;
+            for (const [resourceId, data] of Object.entries(tokens)) {
+                if (!data || !data.token || !data.expiresAt) continue; // Skip invalid entries
+                const expiresDate = new Date(data.expiresAt * 1000).toLocaleString();
+                const isExpired = data.expiresAt < now;
+                 // Only show non-expired tokens or add clear indication
+                if(isExpired) {
+                    // Optionally hide expired tokens or mark them clearly
+                     html += `<li style="opacity: 0.5;">`; // Visually indicate expired
+                } else {
+                    html += `<li>`;
+                }
+                 // Display token slightly differently
+                const tokenDisplay = data.token.length > 60
+                    ? `${data.token.substring(0, 15)}...${data.token.substring(data.token.length - 40)}`
+                    : data.token;
+
+                html += `
+                        <strong>Resource:</strong> ${resourceId}<br>
+                        <strong>Expires:</strong> ${expiresDate} ${isExpired ? '<span style="color:red;">(EXPIRED)</span>' : ''}<br>
+                        <strong>Token:</strong> <span title="${data.token}" style="word-break: break-all;">${tokenDisplay}</span><br>
+                        <div class="button-group" style="margin-top: 5px;">
+                         ${!isExpired ? `<button class="use-token-btn" data-resource="${resourceId}">Use Token</button>` : ''}
+                         <button class="delete-token-btn" data-resource="${resourceId}">Delete</button>
+                        </div>
+                    </li>
+                `;
+            }
+            html += '</ul>';
+            storedTokensEl.innerHTML = html;
+
+            // Re-add event listeners
+            document.querySelectorAll('.use-token-btn').forEach(btn => {
+                btn.onclick = async () => { // Use onclick for simplicity here
+                    const resourceId = btn.getAttribute('data-resource');
+                    const token = getStoredToken(resourceId); // getStoredToken handles expiry check
+                    if (token) {
+                         activateTab('request'); // Switch back to request tab
+                         await fetchResourceWithToken(resourceId, token);
+                    } else {
+                         alert(`Token for ${resourceId} is invalid or expired.`);
+                    }
+                };
+            });
+
+            document.querySelectorAll('.delete-token-btn').forEach(btn => {
+                btn.onclick = () => { // Use onclick for simplicity here
+                    const resourceId = btn.getAttribute('data-resource');
+                    clearToken(resourceId);
+                };
+            });
+        }
+
+        // --- L402 Core Logic ---
+
+        function extractChallenge(headers) {
+            const authHeader = headers.get('WWW-Authenticate');
+            console.log("Received WWW-Authenticate Header:", authHeader); // Log received header
+            if (!authHeader || !authHeader.startsWith('LSAT ')) {
+                console.error("WWW-Authenticate header missing or invalid format.");
+                return null;
+            }
+
+            // Simple parsing for macaroon="..." and invoice="..."
+            const macaroonMatch = authHeader.match(/macaroon="([^"]+)"/);
+            const invoiceMatch = authHeader.match(/invoice="([^"]+)"/);
+
+            if (!macaroonMatch || !invoiceMatch) {
+                 console.error("Could not parse macaroon or invoice from challenge header.");
+                 return null;
+            }
+             console.log("Parsed Challenge:", { macaroon: macaroonMatch[1].substring(0,10)+"...", invoice: invoiceMatch[1].substring(0,10)+"..."});
+
+            return {
+                macaroon: macaroonMatch[1],
+                invoice: invoiceMatch[1]
+            };
+        }
+
+        function getCurrentResourceId() {
+            const select = document.getElementById('resource-id');
+            return select.value === 'custom' ? document.getElementById('custom-resource').value.trim() : select.value;
+        }
+
+        // Hardcode the base URL
+        const SERVER_BASE_URL = "https://lightning-goats.com";
+
+        function getBaseUrl() {
+            // Return the hardcoded constant
+            return SERVER_BASE_URL;
+        }
+
+
+        function createLsatToken(macaroonB64, preimageHex) {
+            if (!macaroonB64 || !preimageHex) return null;
+            return `LSAT ${macaroonB64}:${preimageHex}`;
+        }
+
+        async function checkPaymentStatus(paymentHash) {
+            if (!paymentHash) {
+                 setStatus('payment-status', 'Error: No payment hash available.', 'error');
+                 return false;
+            }
+            setStatus('payment-status', `Checking payment status for ${paymentHash.substring(0,10)}...`, 'info');
+            document.getElementById('check-payment-btn').disabled = true;
+
+            try {
+                const response = await fetch(`${getBaseUrl()}/l402/payment/${paymentHash}`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                         setStatus('payment-status', `Payment ${paymentHash.substring(0,10)}... not found or expired.`, 'info');
+                         stopAutoCheck(); // Stop checking if not found
+                         return false;
+                    }
+                    const errorText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log("Payment Check Response:", data);
+
+                if (data.status === 'paid' && data.preimage) {
+                    setStatus('payment-status', 'Payment confirmed! Preimage received. Requesting resource...', 'success');
+                    setValue('preimage', data.preimage); // Display preimage
+
+                    const macaroon = window.currentMacaroon;
+                    const resourceId = window.currentResourceId;
+                    if (macaroon && resourceId) {
+                        const token = createLsatToken(macaroon, data.preimage);
+                        if (token) {
+                             stopAutoCheck();
+                             await fetchResourceWithToken(resourceId, token);
+                             return true;
+                        } else { setStatus('payment-status', 'Failed to construct LSAT token after payment.', 'error'); }
+                    } else { setStatus('payment-status', 'Internal client error: Missing macaroon/resource ID after payment.', 'error'); }
+                    return true;
+                } else if (data.status === 'paid') {
+                     setStatus('payment-status', 'Payment confirmed, but server did not provide preimage. Manual entry might be needed if available.', 'warning');
+                     stopAutoCheck();
+                     return true;
+                } else if (data.status === 'pending') {
+                    setStatus('payment-status', `Payment status: Pending. Keep waiting or check wallet.`, 'info');
+                    return false;
+                } else {
+                    setStatus('payment-status', `Payment status: ${data.status || 'Unknown'}. ${data.message || ''}`, 'info');
+                    if (data.status === 'expired' || data.status === 'error' || data.status === 'not_found') {
+                         stopAutoCheck();
+                    }
+                    return false;
+                }
+            } catch (error) {
+                console.error("Error checking payment:", error);
+                setStatus('payment-status', `Error checking payment: ${error.message}`, 'error');
+                document.getElementById('check-payment-btn').disabled = false; // Re-enable button on error
+                return false; // Consider stopping check on persistent errors?
+            } finally {
+                // Re-enable button unless already handled by stopping check
+                 if(checkInterval) {
+                     document.getElementById('check-payment-btn').disabled = false;
+                 }
+            }
+        }
+
+        async function requestResource() {
+            hideElement('invoice-card');
+            hideElement('resource-card');
+            setStatus('request-status', 'Requesting resource...', 'info');
+            document.getElementById('request-btn').disabled = true;
+            stopAutoCheck(); // Stop any previous checks
+
+            const resourceId = getCurrentResourceId();
+            if (!resourceId) {
+                setStatus('request-status', 'Please select or enter a resource ID', 'error');
+                document.getElementById('request-btn').disabled = false;
+                return;
+            }
+            window.currentResourceId = resourceId; // Store globally for this flow
+            window.currentMacaroon = null; // Clear previous challenge details
+            window.currentPaymentHash = null;
+            window.currentToken = null; // Clear previous successful token
+
+
+            // 1. Check for a valid stored token first
+            const storedToken = getStoredToken(resourceId);
+            if (storedToken) {
+                setStatus('request-status', 'Found valid stored token. Attempting access...', 'info');
+                console.log(`Using stored token for ${resourceId}`);
+                document.getElementById('request-btn').disabled = false;
+                await fetchResourceWithToken(resourceId, storedToken);
+                return; // Stop here if token works or fails
+            }
+            setStatus('request-status', 'No valid stored token found. Requesting resource access...', 'info');
+
+            // 2. No valid token, request resource to initiate L402 flow
+            try {
+                const url = `${getBaseUrl()}/l402/protected/${resourceId}`;
+                const response = await fetch(url);
+
+                if (response.ok) {
+                    console.warn("Received resource directly without 402 challenge.");
+                    const data = await response.json();
+                    setStatus('request-status', 'Access granted directly (no payment required?).', 'success');
+                    displayResource(data, null);
+                } else if (response.status === 402) {
+                    const challenge = extractChallenge(response.headers);
+                    let responseData = {};
+                    try { responseData = await response.json(); }
+                    catch(e) { console.error("402 response body was not valid JSON or empty."); }
+
+                    // Combine data from header and body (prefer body for details)
+                    const invoice = responseData.invoice || (challenge ? challenge.invoice : null);
+                    const macaroon = challenge ? challenge.macaroon : null;
+                    const paymentHash = responseData.payment_hash || null;
+                    const amount = responseData.amount || '?'; // Amount might not be in header
+
+                    if (!macaroon || !invoice || !paymentHash) {
+                          console.error("Challenge Header:", challenge);
+                          console.error("Response Body:", responseData);
+                          throw new Error('Server sent invalid 402 Payment Required response (missing macaroon, invoice, or payment_hash).');
+                    }
+
+                    setStatus('request-status', 'Payment required. Invoice details below.', 'info');
+
+                    window.currentMacaroon = macaroon;
+                    window.currentPaymentHash = paymentHash;
+
+                    setValue('invoice', invoice);
+                    setValue('payment-hash', paymentHash);
+                    setContent('invoice-amount', amount);
+                    setValue('preimage','');
+                    displayQRCode(invoice);
+
+                    hideElement('resource-card');
+                    showElement('invoice-card');
+                    setStatus('payment-status', 'Please pay the invoice to access the resource.', 'info');
+                    startAutoCheck();
+
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errorText}`);
+                }
+            } catch (error) {
+                console.error("Error requesting resource:", error);
+                setStatus('request-status', `Error: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('request-btn').disabled = false;
+            }
+        }
+
+        async function fetchResourceWithToken(resourceId, lsatToken) {
+            if (!resourceId || !lsatToken) {
+                alert('Missing resource ID or LSAT token for request.');
+                return;
+            }
+            setStatus('request-status', `Accessing ${resourceId} with token...`, 'info');
+            hideElement('invoice-card');
+
+            try {
+                const url = `${getBaseUrl()}/l402/protected/${resourceId}`;
+                const response = await fetch(url, {
+                    headers: { 'Authorization': lsatToken }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setStatus('request-status', 'Resource accessed successfully!', 'success');
+                    displayResource(data, lsatToken);
+                } else if (response.status === 401 || response.status === 403) {
+                    console.warn(`Token access failed (${response.status}). Clearing stored token.`);
+                    const errorText = await response.text();
+                    setStatus('request-status', `Access denied (${response.status}): Token invalid or expired. Details: ${errorText}`, 'error');
+                    clearToken(resourceId);
+                    window.currentToken = null;
+                    hideElement('resource-card');
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errorText}`);
+                }
+            } catch (error) {
+                console.error("Error fetching resource with token:", error);
+                setStatus('request-status', `Error accessing resource: ${error.message}`, 'error');
+                hideElement('resource-card');
+            }
+        }
+
+        // Display resource content and store token
+        function displayResource(data, lsatTokenUsed) {
+            const contentEl = document.getElementById('resource-content');
+            const tokenInfoEl = document.getElementById('token-info');
+
+            contentEl.textContent = JSON.stringify(data, null, 2);
+
+            if (lsatTokenUsed && data.resource_id && data.access_expires) {
+                window.currentToken = lsatTokenUsed;
+
+                const expiresDate = new Date(data.access_expires * 1000).toLocaleString();
+                const tokenDisplay = lsatTokenUsed.length > 60
+                    ? `${lsatTokenUsed.substring(0, 15)}...${lsatTokenUsed.substring(lsatTokenUsed.length - 40)}`
+                    : lsatTokenUsed;
+
+                tokenInfoEl.textContent = `Token Used: ${tokenDisplay}\nResource: ${data.resource_id}\nExpires: ${expiresDate}`;
+                storeToken(data.resource_id, lsatTokenUsed, data.access_expires);
+            } else {
+                tokenInfoEl.textContent = 'Resource accessed (no token info available or needed).';
+                window.currentToken = null;
+            }
+            hideElement('invoice-card');
+            showElement('resource-card');
+            setStatus('request-status', 'Resource displayed.', 'success');
+        }
+
+        // --- Auto Check Payment ---
+        function startAutoCheck() {
+            stopAutoCheck(); // Clear previous interval if any
+            if (!document.getElementById('auto-check').checked) {
+                 console.log("Auto-check disabled.");
+                 return;
+            }
+            const paymentHash = window.currentPaymentHash;
+            if (!paymentHash || document.getElementById('invoice-card').classList.contains('hidden')) {
+                 console.log("Auto-check not starting (no hash or invoice card not visible).");
+                 return;
+            }
+
+            console.log("Starting auto-check for payment status...");
+            // Initial check slightly delayed
+            setTimeout(() => {
+                 // Check immediately once
+                 if (window.currentPaymentHash && !document.getElementById('invoice-card').classList.contains('hidden')) {
+                      checkPaymentStatus(window.currentPaymentHash);
+                 }
+                 // Then set interval if still needed
+                 if (checkInterval === null) { // Avoid setting interval if checkPaymentStatus already cleared it
+                    checkInterval = setInterval(async () => {
+                        if (window.currentPaymentHash && !document.getElementById('invoice-card').classList.contains('hidden')) {
+                            try { await checkPaymentStatus(window.currentPaymentHash); }
+                            catch (e) { console.error("Error during auto-check interval:", e); }
+                        } else {
+                            console.log("Stopping auto-check (invoice card hidden or hash cleared).");
+                            stopAutoCheck();
+                        }
+                    }, 3000); // Check every 3 seconds
+                 }
+            }, 500); // Start checks after 500ms
+        }
+
+
+        function stopAutoCheck() {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+                console.log("Stopped auto-checking payment status.");
+                // Re-enable manual check button if needed
+                 document.getElementById('check-payment-btn').disabled = false;
+            }
+        }
+
+        // --- Tab Management ---
+        function activateTab(tabIdToShow) {
+             document.querySelectorAll('.tab').forEach(tab => {
+                  const tabId = tab.getAttribute('data-tab');
+                  const content = document.getElementById(`${tabId}-tab`);
+                  if(!content) return; // Skip if content element doesn't exist
+                  if (tabId === tabIdToShow) {
+                       tab.classList.add('active');
+                       content.classList.remove('hidden');
+                  } else {
+                       tab.classList.remove('active');
+                       content.classList.add('hidden');
+                  }
+             });
+             if (tabIdToShow !== 'request') stopAutoCheck();
+             if (tabIdToShow === 'tokens') updateStoredTokensDisplay();
+        }
+
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => activateTab(tab.getAttribute('data-tab')));
+            });
+
+            document.getElementById('resource-id').addEventListener('change', function() {
+                if (this.value === 'custom') showElement('custom-resource-group');
+                else hideElement('custom-resource-group');
+            });
+
+            document.getElementById('request-btn').addEventListener('click', requestResource);
+
+            document.getElementById('copy-invoice-btn').addEventListener('click', () => {
+                const invoiceEl = document.getElementById('invoice');
+                navigator.clipboard.writeText(invoiceEl.value).then(() => {
+                    alert('Invoice copied to clipboard!');
+                }).catch(err => { console.error('Failed to copy invoice: ', err); alert('Failed to copy invoice.'); });
+            });
+            document.getElementById('open-wallet-btn').addEventListener('click', () => {
+                const invoice = document.getElementById('invoice').value;
+                if (invoice) window.open(`lightning:${invoice}`);
+            });
+
+            document.getElementById('check-payment-btn').addEventListener('click', () => {
+                const paymentHash = window.currentPaymentHash || document.getElementById('payment-hash').value;
+                if(paymentHash) checkPaymentStatus(paymentHash);
+                else alert("No payment hash available to check.");
+            });
+            document.getElementById('auto-check').addEventListener('change', (e) => {
+                 if (e.target.checked) startAutoCheck(); else stopAutoCheck();
+            });
+             document.getElementById('use-preimage-btn').addEventListener('click', async () => {
+                const preimage = document.getElementById('preimage').value.trim();
+                const macaroon = window.currentMacaroon;
+                const resourceId = window.currentResourceId;
+
+                if (!preimage || preimage.length !== 64 || !/^[0-9a-fA-F]+$/.test(preimage)) { // Added hex check
+                    alert('Please enter a valid 64-character hex preimage.'); return;
+                }
+                if (!macaroon || !resourceId) {
+                    alert('Missing challenge information (macaroon/resource ID). Please request the resource first.'); return;
+                }
+
+                setStatus('payment-status', 'Attempting access with manual preimage...', 'info');
+                const token = createLsatToken(macaroon, preimage);
+                if (token) {
+                     stopAutoCheck();
+                     await fetchResourceWithToken(resourceId, token);
+                } else { alert('Failed to create token with provided details.'); }
+            });
+
+            document.getElementById('access-again-btn').addEventListener('click', async () => {
+                const resourceId = window.currentResourceId;
+                const token = window.currentToken;
+                if (token && resourceId) {
+                    await fetchResourceWithToken(resourceId, token);
+                } else { alert('No valid token available from the current session. Please request the resource again.'); }
+            });
+            document.getElementById('clear-token-btn').addEventListener('click', () => {
+                const resourceId = window.currentResourceId;
+                if (resourceId) {
+                    clearToken(resourceId);
+                    window.currentToken = null;
+                    alert(`Token for ${resourceId} cleared.`);
+                    hideElement('resource-card');
+                    setStatus('request-status', `Token for ${resourceId} cleared.`, 'info');
+                } else { alert('No resource context to clear token for.'); }
+            });
+
+            document.getElementById('clear-all-tokens-btn').addEventListener('click', () => {
+                if (confirm('Are you sure you want to clear ALL stored LSAT tokens?')) {
+                    clearAllTokens();
+                    alert('All tokens cleared.');
+                }
+            });
+
+            // Initial setup
+            updateStoredTokensDisplay();
+            activateTab('request');
+        });
+    </script>
+</body>
+</html>
