@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Path, Query
+from fastapi import APIRouter, HTTPException, Depends, Path, Query, Body
 from typing import Dict, Any, Optional
 import logging
 
 from services.payment_service import PaymentService
 from services.price_service import PriceService
+from services.payment_processor_service import PaymentProcessorService
 from models import PaymentRequest
 
 # Initialize logger
@@ -19,12 +20,14 @@ router = APIRouter(
 # Store service instances for dependency injection
 _payment_service: Optional[PaymentService] = None
 _price_service: Optional[PriceService] = None
+_payment_processor_service: Optional[PaymentProcessorService] = None
 
-def initialize_services(payment_service: PaymentService, price_service: PriceService):
+def initialize_services(payment_service: PaymentService, price_service: PriceService, payment_processor_service: PaymentProcessorService):
     """Initialize the services needed for this router."""
-    global _payment_service, _price_service
+    global _payment_service, _price_service, _payment_processor_service
     _payment_service = payment_service
     _price_service = price_service
+    _payment_processor_service = payment_processor_service
 
 # Dependency function to get services
 async def get_payment_service() -> PaymentService:
@@ -36,6 +39,11 @@ async def get_price_service() -> PriceService:
     if _price_service is None:
         raise HTTPException(status_code=500, detail="PriceService not initialized")
     return _price_service
+
+async def get_payment_processor_service() -> PaymentProcessorService:
+    if _payment_processor_service is None:
+        raise HTTPException(status_code=500, detail="PaymentProcessorService not initialized")
+    return _payment_processor_service
 
 @router.get("/balance")
 async def get_balance(
@@ -157,6 +165,29 @@ async def zap_lightning_address(
     except Exception as e:
         logger.error(f"Failed to zap {lud16}: {e}")
         raise HTTPException(status_code=500, detail="Failed to send zap")
+
+@router.post("/check-missed-zaps",
+             summary="Check for missed zaps in recent payments",
+             description="Query LNBits for recent payments and process any missed zaps")
+async def check_missed_zaps(
+    hours: int = Body(24, description="Look back this many hours"),
+    limit: int = Body(100, description="Maximum number of payments to check"),
+    payment_service: PaymentService = Depends(get_payment_service),
+    payment_processor_service: PaymentProcessorService = Depends(get_payment_processor_service)
+):
+    """
+    Check for and process any missed zaps in recent payments.
+    This is useful to recover after downtime or if events were missed.
+    """
+    try:
+        result = await payment_processor_service.process_missed_zaps(
+            hours_ago=hours,
+            limit=limit
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error checking for missed zaps: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing missed zaps: {str(e)}")
 
 # Legacy routes - keeping old paths for backward compatibility
 @router.get("/balance", include_in_schema=False)

@@ -2,11 +2,14 @@ import logging
 import json
 from typing import Dict, Any, Optional, List
 from asyncio import Lock
+import time
+import datetime
 
 from services.payment_service import PaymentService
 from services.goat_service import GoatStateService
 from services.cyberherd_service import CyberHerdService
 from services.messaging_service import MessagingService
+from services.database_service import DatabaseService
 from utils.cyberherd_module import MetadataFetcher, Verifier, generate_nprofile, check_cyberherd_tag, DEFAULT_RELAYS
 
 logger = logging.getLogger(__name__)
@@ -20,6 +23,7 @@ class PaymentProcessorService:
         goat_service: GoatStateService, 
         cyberherd_service: CyberHerdService,
         messaging_service: MessagingService,
+        database_service: Optional[DatabaseService] = None,  # Add database_service parameter
         trigger_amount: int = 1250,
         process_zaps: bool = True  # Add configuration option to enable/disable zap processing
     ):
@@ -27,6 +31,7 @@ class PaymentProcessorService:
         self.goat_service = goat_service
         self.cyberherd_service = cyberherd_service
         self.messaging_service = messaging_service
+        self.database_service = database_service  # Store database_service
         self.trigger_amount = trigger_amount
         self.process_zaps = process_zaps  # Store the configuration
         self.balance = 0
@@ -42,7 +47,7 @@ class PaymentProcessorService:
         async with self.balance_lock:
             return self.balance
             
-    async def process_payment(self, payment_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_payment(self, payment_data: Dict[str, Any], send_notifications: bool = True) -> Dict[str, Any]:
         """Process incoming payment data."""
         try:
             payment = payment_data.get('payment', {})
@@ -90,15 +95,23 @@ class PaymentProcessorService:
             # Extract nostr data from payment extras
             nostr_data_raw = self._extract_nostr_data(payment)
             
-            if nostr_data_raw and self.process_zaps:
-                # Process nostr data (zaps) if enabled
-                if sats_received > 21:  # Minimum zap amount is 21 sats
-                    logger.info(f"Processing zap data: {nostr_data_raw}")
-                    cyberherd_result = await self._process_nostr_data(nostr_data_raw, sats_received)
-                    new_cyberherd_record_created = cyberherd_result.get("success", False)
-            elif nostr_data_raw and not self.process_zaps:
-                # Log that we're skipping zap processing due to configuration
-                logger.info(f"Skipping zap processing due to configuration (process_zaps=False)")
+            if nostr_data_raw:
+                logger.info(f"Found nostr data in payment: {nostr_data_raw[:100]}...")
+                
+                if self.process_zaps:
+                    # Process nostr data (zaps) if enabled
+                    if sats_received >= 10:  # Changed: Allow exactly 10 sats (minimum zap amount)
+                        logger.info(f"Processing zap data for {sats_received} sats payment")
+                        cyberherd_result = await self._process_nostr_data(nostr_data_raw, sats_received)
+                        new_cyberherd_record_created = cyberherd_result.get("success", False)
+                        logger.info(f"Zap processing result: {cyberherd_result}")
+                    else:
+                        logger.info(f"Skipping zap processing: amount too small ({sats_received} sats, minimum 21)")
+                else:
+                    # Log that we're skipping zap processing due to configuration
+                    logger.info(f"Skipping zap processing due to configuration (process_zaps=False)")
+            else:
+                logger.debug("No nostr data found in payment")
 
             # Handle feeder triggering if applicable
             if sats_received > 0 and not await self.goat_service.get_feeder_override_status():
@@ -111,7 +124,8 @@ class PaymentProcessorService:
                     feeder_triggered = await self._trigger_feeder_and_pay(sats_received)
                 
                 # Send notification if neither feeder triggered nor new cyberherd record created
-                if not feeder_triggered and not new_cyberherd_record_created:
+                # Only send if notifications are enabled (true by default, but disabled for missed zaps)
+                if not feeder_triggered and not new_cyberherd_record_created and send_notifications:
                     await self._send_payment_notification(sats_received, current_balance)
             else:
                 logger.info("Feeder override is ON or payment amount is non-positive. Skipping feeder logic.")
@@ -134,9 +148,17 @@ class PaymentProcessorService:
             
         # Try to find nostr data in different locations
         if 'nostr' in extra:
-            return extra['nostr']
+            nostr_data = extra['nostr']
+            logger.debug(f"Found nostr data in extra.nostr")
+            return nostr_data
         elif 'extra' in extra and isinstance(extra['extra'], dict):
-            return extra['extra'].get('nostr')
+            nostr_data = extra['extra'].get('nostr')
+            if nostr_data:
+                logger.debug(f"Found nostr data in extra.extra.nostr")
+            return nostr_data
+        
+        # Add more detailed logging about what we received
+        logger.debug(f"No nostr data found in payment extra data: {extra}")
         return None
         
     async def _process_nostr_data(self, nostr_data_raw: str, sats_received: int) -> Dict[str, Any]:
@@ -362,3 +384,148 @@ class PaymentProcessorService:
                 logger.info(f"Successfully sent payment notification to clients")
             except Exception as e:
                 logger.error(f"Error sending payment notification: {e}", exc_info=True)
+
+    async def process_missed_zaps(self, hours_ago: int = 24, limit: int = 100) -> Dict[str, Any]:
+        """
+        Retrieve and process recent payments to catch any missed zaps.
+        """
+        if not self.process_zaps:
+            logger.info("Zap processing is disabled. Skipping missed zaps check.")
+            return {"success": False, "reason": "zap_processing_disabled"}
+        
+        try:
+            logger.info(f"Checking for missed zaps from the last {hours_ago} hours (limit: {limit})")
+            
+            # Get processed payments from database to avoid reprocessing
+            processed_payment_hashes = []
+            if self.database_service:
+                try:
+                    processed_payment_hashes = await self.database_service.get_processed_payment_hashes(hours_ago)
+                    logger.info(f"Found {len(processed_payment_hashes)} already processed payment hashes in database")
+                except Exception as db_err:
+                    logger.warning(f"Could not get processed payment hashes from database: {db_err}. Will proceed without filtering.")
+            else:
+                logger.warning("No database_service available. Cannot filter already processed payment hashes.")
+            
+            # Get recent payments from LNBits via payment_service
+            logger.info(f"Querying LNBits for recent payments in the last {hours_ago} hours...")
+            recent_payments = await self.payment_service.get_recent_payments(
+                wallet_key=self.payment_service.herd_key,
+                limit=limit,
+                hours_ago=hours_ago
+            )
+            
+            if not recent_payments:
+                logger.info("No recent payments found in LNBits to check for missed zaps")
+                return {"success": True, "processed": 0, "found": 0, "checked": 0}
+            
+            # Log some sample payment data to help debug
+            if recent_payments:
+                sample_payment = recent_payments[0]
+                logger.info(f"Sample payment: checking_id={sample_payment.get('checking_id')}, amount={sample_payment.get('amount')}")
+                logger.debug(f"Sample payment extra data: {json.dumps(sample_payment.get('extra', {}))}")
+            
+            logger.info(f"Found {len(recent_payments)} recent payments in LNBits")
+            
+            # Track results
+            processed_count = 0
+            zaps_found = 0
+            skipped_count = 0
+            processed_hashes = []
+            
+            # Process each payment from LNBits
+            for payment in recent_payments:
+                # Extract payment hash (checking_id or payment_hash)
+                payment_hash = payment.get('checking_id') or payment.get('payment_hash')
+                
+                if not payment_hash:
+                    logger.warning(f"Payment missing hash/checking_id, skipping: {payment}")
+                    continue
+                    
+                # Check if amount is positive (incoming payment)
+                amount = payment.get('amount', 0)
+                if amount <= 0:
+                    logger.debug(f"Skipping outgoing payment {payment_hash[:10]}...")
+                    continue
+                    
+                # Skip if already processed (in database or current session)
+                if payment_hash in processed_payment_hashes or payment_hash in processed_hashes:
+                    logger.debug(f"Skipping already processed payment {payment_hash[:10]}...")
+                    skipped_count += 1
+                    continue
+                    
+                # Log that we're checking this unprocessed payment
+                payment_time = payment.get('time', 0)
+                payment_time_str = datetime.datetime.fromtimestamp(payment_time).strftime('%Y-%m-%d %H:%M:%S') if payment_time else 'unknown'
+                logger.info(f"Checking payment {payment_hash[:10]}... ({amount/1000} sats) from {payment_time_str}")
+                    
+                # Extract and check for nostr data - with enhanced debugging
+                extra_data = payment.get('extra', {})
+                logger.debug(f"Payment extra data: {json.dumps(extra_data)}")
+                
+                nostr_data_raw = self._extract_nostr_data(payment)
+                if not nostr_data_raw:
+                    logger.debug(f"No nostr data found in payment {payment_hash[:10]}")
+                    continue
+                
+                # Found a potential zap - log the actual nostr data to help diagnose issues
+                zaps_found += 1
+                logger.info(f"Found missed payment with zap data: hash={payment_hash[:10]}... ({amount/1000} sats)")
+                logger.debug(f"Nostr data: {nostr_data_raw[:200]}...")
+                
+                # Convert to the format expected by process_payment
+                payment_data = {
+                    'payment': payment,
+                    'wallet_balance': payment.get('wallet_balance', 0)
+                }
+                
+                # Process the payment
+                try:
+                    logger.info(f"Processing missed zap payment: {payment_hash[:10]}...")
+                    # Pass send_notifications=False to suppress sending payment notifications for missed zaps
+                    result = await self.process_payment(payment_data, send_notifications=False)
+                    
+                    if result.get("success"):
+                        if result.get("cyberherd_updated"):
+                            processed_count += 1
+                            logger.info(f"Successfully processed missed zap: hash={payment_hash[:10]}... - CyberHerd updated")
+                        else:
+                            logger.info(f"Processed payment {payment_hash[:10]}... but no CyberHerd update was needed")
+                            
+                        # Track as processed regardless of cyberherd update
+                        processed_hashes.append(payment_hash)
+                        
+                        # Store the payment hash as processed in database
+                        if self.database_service:
+                            metadata = {
+                                "processed_by": "missed_zaps_check",
+                                "timestamp": int(time.time()),
+                                "result": "success",
+                                "cyberherd_updated": result.get("cyberherd_updated", False),
+                                "feeder_triggered": result.get("feeder_triggered", False)
+                            }
+                            await self.database_service.store_processed_payment_hash(payment_hash, metadata)
+                            logger.debug(f"Recorded {payment_hash[:10]}... as processed in database")
+                    else:
+                        logger.warning(f"Failed to process missed zap {payment_hash[:10]}: {result.get('error', 'Unknown error')}")
+                except Exception as process_err:
+                    logger.error(f"Error processing missed zap {payment_hash[:10]}: {process_err}", exc_info=True)
+            
+            # Log final results
+            logger.info(f"Missed zap processing complete:")
+            logger.info(f"- Total payments checked: {len(recent_payments)}")
+            logger.info(f"- Skipped (already processed): {skipped_count}")
+            logger.info(f"- Potential zaps found: {zaps_found}")
+            logger.info(f"- Successfully processed: {processed_count}")
+            
+            return {
+                "success": True,
+                "found": zaps_found,
+                "processed": processed_count,
+                "skipped": skipped_count,
+                "checked": len(recent_payments)
+            }
+        
+        except Exception as e:
+            logger.error(f"Error during missed zap processing: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}

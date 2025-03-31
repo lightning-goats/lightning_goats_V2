@@ -256,6 +256,7 @@ async def startup():
         goat_service=goat_service,
         cyberherd_service=cyberherd_service,
         messaging_service=messaging_service,
+        database_service=database_service,  # Pass database_service here
         trigger_amount=TRIGGER_AMOUNT_SATS,
         process_zaps=True
     )
@@ -268,7 +269,7 @@ async def startup():
             database_service=database_service,
             messaging_service=messaging_service,
             secret_key=config.get('L402_SECRET_KEY'),
-            default_expiry_seconds=get_env_int('L402_DEFAULT_EXPIRY_SECONDS', 3600),
+            default_expiry_seconds=get_env_int('L402_DEFAULT_EXPIRY_SECONDS', 300),
             default_price_sats=get_env_int('L402_DEFAULT_PRICE_SATS', 1)
         )
         await l402_service.initialize()
@@ -279,7 +280,11 @@ async def startup():
         l402_service = None # Ensure it's None if init fails
 
     # Initialize Routers (pass initialized services)
-    payment_routes.initialize_services(payment_service=payment_service, price_service=price_service)
+    payment_routes.initialize_services(
+        payment_service=payment_service, 
+        price_service=price_service,
+        payment_processor_service=payment_processor_service  # Add this parameter
+    )
     cyberherd_routes.initialize_services(cyberherd_service=cyberherd_service, database_service=database_service)
     goat_routes.initialize_services(goat_service=goat_service)
     messaging_routes.initialize_services(messaging_service=messaging_service, cyberherd_service=cyberherd_service)
@@ -407,13 +412,18 @@ async def schedule_daily_reset():
             except Exception as e:
                 logger.error(f"Failed to perform CyberHerd reset: {e}", exc_info=True)
 
-        # Clear old DM notifications
+        # Clear old DM notifications and payment hashes
         if database_service:
             try:
-                deleted_count = await database_service.clear_old_dm_notifications()
-                logger.info(f"Cleared {deleted_count} old DM notifications.")
+                deleted_count = await database_service.clear_old_dm_notifications(days=7)
+                logger.info(f"Cleared {deleted_count} old DM notifications (older than 7 days).")
+                
+                # Also clean up old payment hashes
+                deleted_hashes = await database_service.cleanup_old_payment_hashes(days=7)
+                logger.info(f"Cleared {deleted_hashes} old payment hashes (older than 7 days).")
             except Exception as e:
-                logger.error(f"Failed to clear old DM notifications: {e}", exc_info=True)
+                logger.error(f"Failed to clear old notifications or payment hashes: {e}", exc_info=True)
+        
         logger.info("Daily reset complete.")
 
 

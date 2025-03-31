@@ -45,6 +45,7 @@ class DatabaseService:
         await self.database.disconnect()
         
     async def initialize_tables(self):
+        """Initialize database tables if they don't exist."""
         # Create tables using raw SQL for backward compatibility
         await self.database.execute('''
             CREATE TABLE IF NOT EXISTS cyber_herd (
@@ -136,7 +137,16 @@ class DatabaseService:
             CREATE INDEX IF NOT EXISTS idx_dm_notifications_pubkey
             ON dm_notifications(pubkey)
         """)
-    # Add specialized database methods for cyber_herd table operations
+        # Create payment_hashes table
+        await self.database.execute("""
+            CREATE TABLE IF NOT EXISTS payment_hashes (
+                payment_hash TEXT PRIMARY KEY,
+                processed_at INTEGER NOT NULL,
+                metadata TEXT
+            )
+        """)
+        self.logger.info("Payment hashes table initialized")
+        
     async def get_cyberherd_list(self):
         """Get a list of all current CyberHerd members"""
         try:
@@ -790,6 +800,109 @@ class DatabaseService:
         
         row = await self.database.fetch_one(query, {'payment_hash': payment_hash})
         return row and row['is_paid']
+
+    async def store_processed_payment_hash(self, payment_hash: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Store a payment hash as processed to avoid reprocessing zaps.
+        
+        Args:
+            payment_hash: The payment hash to store
+            metadata: Optional metadata to store with the hash (will be JSON encoded)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not payment_hash:
+            return False
+            
+        try:
+            # Convert metadata to JSON if provided
+            metadata_json = json.dumps(metadata) if metadata else None
+            
+            # Current timestamp in seconds
+            now = int(time.time())
+            
+            # Insert or replace the hash
+            query = """
+                INSERT OR REPLACE INTO payment_hashes (payment_hash, processed_at, metadata)
+                VALUES (:payment_hash, :processed_at, :metadata)
+            """
+            values = {
+                "payment_hash": payment_hash,
+                "processed_at": now,
+                "metadata": metadata_json
+            }
+            
+            await self.database.execute(query, values)
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error storing processed payment hash: {e}", exc_info=True)
+            return False
+
+    async def get_processed_payment_hashes(self, hours_ago: int = 24) -> List[str]:
+        """
+        Get list of payment hashes that have been processed within the specified time period.
+        
+        Args:
+            hours_ago: Return hashes processed within this many hours
+            
+        Returns:
+            List[str]: List of payment hash strings
+        """
+        try:
+            # Calculate timestamp for filtering
+            cutoff_time = int(time.time()) - (hours_ago * 3600)
+            
+            # Query for recent hashes
+            query = """
+                SELECT payment_hash FROM payment_hashes
+                WHERE processed_at >= :cutoff_time
+            """
+            
+            rows = await self.database.fetch_all(query, {"cutoff_time": cutoff_time})
+            
+            # Extract payment hashes from result
+            payment_hashes = [row["payment_hash"] for row in rows]
+            
+            self.logger.info(f"Retrieved {len(payment_hashes)} processed payment hashes from the last {hours_ago} hours")
+            return payment_hashes
+            
+        except Exception as e:
+            self.logger.error(f"Error retrieving processed payment hashes: {e}", exc_info=True)
+            return []
+
+    async def cleanup_old_payment_hashes(self, days: int = 7) -> int:
+        """
+        Delete payment hashes older than the specified number of days.
+        
+        Args:
+            days: Delete hashes older than this many days
+            
+        Returns:
+            int: Number of records deleted
+        """
+        try:
+            # Calculate cutoff timestamp
+            cutoff_time = int(time.time()) - (days * 86400)  # 86400 seconds in a day
+            
+            # Delete old records
+            query = """
+                DELETE FROM payment_hashes
+                WHERE processed_at < :cutoff_time
+            """
+            
+            result = await self.database.execute(query, {"cutoff_time": cutoff_time})
+            
+            # For SQLite, the result is the number of rows affected
+            deleted_count = result if isinstance(result, int) else 0
+            
+            self.logger.info(f"Cleaned up {deleted_count} payment hashes older than {days} days")
+            return deleted_count
+            
+        except Exception as e:
+            self.logger.error(f"Error cleaning up old payment hashes: {e}")
+            return 0
 
 class DatabaseCache:
     def __init__(self, db):

@@ -3,86 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>L402 Test Client</title>
+    <title>L402 Camera Switch Client (WebSocket)</title> <!-- Updated Title -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <!-- Removed OBS Lib -->
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            max-width: 800px;
-            margin: 20px auto; /* Added top/bottom margin */
-            padding: 20px;
-            line-height: 1.5;
-            color: #333;
-            background-color: #f9f9f9; /* Light background */
-        }
+        body { font-family: sans-serif; max-width: 500px; margin: 20px auto; padding: 15px; line-height: 1.6; color: #333; background-color: #f8f8f8; }
         .container { display: flex; flex-direction: column; gap: 20px; }
-        .card { background-color: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: 500; }
-        input[type="text"], input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
-        button { background-color: #ffd700; color: #000; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background-color 0.2s; }
+        .card { background-color: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06); text-align: center; }
+        .form-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.95em; color: #555;}
+        input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; box-sizing: border-box; }
+        input:read-only { background-color: #eee; cursor: not-allowed;}
+        button { background-color: #ffd700; color: #000; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 1em; font-weight: 500; transition: background-color 0.2s; margin-right: 5px; margin-top: 5px;}
         button:hover { background-color: #f0c400; }
         button:disabled { background-color: #e0e0e0; color: #999; cursor: not-allowed; }
-        .resource-content { background-color: #f5f5f5; padding: 15px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; }
-        .token-info { font-family: monospace; font-size: 14px; white-space: pre-wrap; word-break: break-all; background: #eee; padding: 10px; border-radius: 4px; margin-top: 10px; }
-        .status { margin-top: 15px; padding: 12px; border-radius: 4px; border: 1px solid transparent; }
+        .resource-content { background-color: #f0f0f0; padding: 15px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; margin-bottom: 15px; text-align: left;}
+        .token-info { font-family: monospace; font-size: 0.9em; white-space: pre-wrap; word-break: break-all; background: #eee; padding: 10px; border-radius: 4px; text-align: left;}
+        .status { margin-top: 15px; padding: 12px; border-radius: 4px; border: 1px solid transparent; font-size: 0.95em; text-align: center; }
         .status.success { background-color: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
         .status.error { background-color: #f2dede; color: #a94442; border-color: #ebccd1; }
         .status.info { background-color: #d9edf7; color: #31708f; border-color: #bce8f1; }
         .invoice-container { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 20px; }
-        .qr-code { text-align: center; border: 1px solid #eee; padding: 10px; background: white; }
-        .qr-code img { display: block; margin: auto; } /* Center QR code image */
-        .tabs { display: flex; margin-bottom: -1px; /* Overlap border */ }
-        .tab { padding: 10px 20px; border: 1px solid #ddd; border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer; background-color: #eee; margin-right: 5px; }
-        .tab.active { background-color: white; border-bottom: 1px solid white; position: relative; z-index: 1; }
+        .qr-code { text-align: center; border: 1px solid #eee; padding: 10px; background: white; min-height: 150px; display: flex; align-items: center; justify-content: center;}
+        .qr-code a { display: block; cursor: pointer; }
+        .qr-code img { display: block; margin: auto; max-width: 100%; height: auto;}
         .hidden { display: none; }
-        .button-group { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; } /* Added wrap */
+        .button-group { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
         small { color: #666; }
-        #stored-tokens ul { list-style: none; padding: 0; }
-        #stored-tokens li { border-bottom: 1px solid #eee; padding: 10px 0; }
-        #stored-tokens li:last-child { border-bottom: none; }
-        #stored-tokens button { font-size: 14px; padding: 5px 10px; margin-left: 5px; margin-top: 5px;} /* Adjusted margin */
+        h1, h2 { text-align: center; color: #444;}
+        code { background: #eee; padding: 2px 4px; border-radius: 3px; font-family: monospace;}
+        /* Added WS Status Style */
+        #ws-status { font-size: 0.85em; text-align: center; padding: 5px; border-radius: 4px; margin-top: 10px;}
+        #ws-status.connected { background-color: #dff0d8; color: #3c763d; }
+        #ws-status.disconnected { background-color: #f2dede; color: #a94442; }
+        #ws-status.connecting { background-color: #d9edf7; color: #31708f; }
     </style>
 </head>
 <body>
-    <h1>⚡ L402 Test Client for Lightning Goats</h1>
+    <h1>⚡ L402 Camera Switch Client (WebSocket)</h1>
 
     <div class="container">
-        <div class="tabs">
-            <div class="tab active" data-tab="request">Request Resource</div>
-            <div class="tab" data-tab="tokens">Stored Tokens</div>
-        </div>
 
-        <div id="request-tab" class="tab-content">
-            <div class="card">
-                <h2>Request Protected Resource</h2>
-                <p>Server: <code>https://lightning-goats.com</code></p> <!-- Display hardcoded URL -->
-                <div class="form-group">
-                    <label for="resource-id">Resource ID:</label>
-                    <select id="resource-id">
-                        <option value="basic-feed">basic-feed</option>
-                        <option value="premium-feed">premium-feed</option>
-                        <option value="another-resource">another-resource</option>
-                        <option value="custom">Custom Resource...</option>
-                    </select>
-                </div>
-                <div class="form-group hidden" id="custom-resource-group">
-                    <label for="custom-resource">Custom Resource ID:</label>
-                    <input type="text" id="custom-resource" placeholder="e.g., specific-item-123">
-                </div>
-                <!-- Removed Server URL Input -->
-                <!-- Removed Custom Amount Input -->
-                <button id="request-btn">Request Resource</button>
-                 <div id="request-status" class="status hidden"></div>
-            </div>
+        <div id="l402-section">
+            <!-- Status for loading/requests & WebSocket -->
+            <div id="request-status" class="status info">Loading Camera Switch Access...</div>
+            <div id="ws-status" class="status disconnected hidden">WebSocket Disconnected</div>
 
             <div id="invoice-card" class="card hidden">
-                <h2>Payment Required</h2>
+                <h2>Payment Required (Camera Switch)</h2>
                 <div class="invoice-container">
                     <div id="qr-code" class="qr-code">Generating QR...</div>
                     <div class="button-group">
                         <button id="copy-invoice-btn">Copy Invoice</button>
-                        <button id="open-wallet-btn">Open in Wallet</button>
                     </div>
                     <div>
                         <small>Invoice amount: <span id="invoice-amount">?</span> sats</small>
@@ -90,597 +62,326 @@
                 </div>
                 <div class="form-group">
                     <label for="invoice">BOLT11 Invoice:</label>
-                    <input type="text" id="invoice" readonly style="background:#f0f0f0;">
+                    <input type="text" id="invoice" readonly>
                 </div>
                 <div class="form-group">
                     <label for="payment-hash">Payment Hash:</label>
-                    <input type="text" id="payment-hash" readonly style="background:#f0f0f0;">
+                    <input type="text" id="payment-hash" readonly>
                 </div>
-                 <div class="form-group">
-                    <input type="checkbox" id="auto-check" checked>
-                    <label for="auto-check" style="display: inline; font-weight: normal;">Auto-check payment status (every 3s)</label>
-                </div>
+                 <!-- Removed Auto-check Checkbox -->
                 <div class="button-group">
-                    <button id="check-payment-btn">Check Payment Status Now</button>
+                    <!-- Manual check button kept as fallback -->
+                    <button id="check-payment-btn">Check Payment Status Manually</button>
                     <button id="use-preimage-btn">Use Manual Preimage</button>
                 </div>
                  <div class="form-group" style="margin-top: 15px;">
                     <label for="preimage">Payment Preimage (optional manual entry):</label>
                     <input type="text" id="preimage" placeholder="Enter 64-char hex preimage if obtained manually">
                  </div>
-                <div id="payment-status" class="status info">Awaiting payment...</div>
+                <div id="payment-status" class="status info">Awaiting payment (listening via WebSocket)...</div>
             </div>
 
             <div id="resource-card" class="card hidden">
-                <h2>Protected Resource Accessed</h2>
+                <h2>Camera Switch Accessed</h2>
                 <pre id="resource-content" class="resource-content"></pre>
                 <h3>LSAT Token Information</h3>
                 <div id="token-info" class="token-info"></div>
                 <div class="button-group">
-                    <button id="access-again-btn">Access Again with This Token</button>
-                    <button id="clear-token-btn">Clear This Token</button>
+                    <button id="access-again-btn">Refresh Camera Status</button>
+                    <button id="clear-token-btn">Revoke Access / Clear Token</button>
                 </div>
             </div>
-        </div>
 
-        <div id="tokens-tab" class="tab-content hidden">
-            <div class="card">
-                <h2>Stored LSAT Tokens</h2>
-                <div id="stored-tokens"></div>
-                <button id="clear-all-tokens-btn">Clear All Tokens</button>
-            </div>
+             <div class="card">
+                 <h2>Camera Switch</h2>
+                 <p>Server: <code>https://lightning-goats.com</code></p>
+                 <p>Pay the invoice above (if shown) to get temporary access. Status updates via WebSocket.</p>
+                 <button id="request-btn">Re-Check / Request Invoice</button>
+             </div>
         </div>
-    </div>
+        <!-- Removed Stored Tokens Tab Section -->
+
+    </div> <!-- End Container -->
 
     <script>
         // --- Global State ---
-        window.currentMacaroon = null; // Stores the macaroon from the 402 challenge
-        window.currentPaymentHash = null; // Stores payment hash from the 402 challenge body
-        window.currentResourceId = null; // Stores the resource ID being accessed
-        window.currentToken = null; // Stores the full valid LSAT token (LSAT mac:pre)
-        let checkInterval = null; // Timer for auto-checking payment status
+        window.currentMacaroon = null;
+        window.currentPaymentHash = null;
+        const CAMERA_SWITCH_RESOURCE_ID = 'basic-feed';
+        window.currentResourceId = CAMERA_SWITCH_RESOURCE_ID;
+        window.currentToken = null;
+        let ws = null; // WebSocket instance
+        let wsConnected = false;
+        let wsReconnectAttempts = 0;
+        const MAX_WS_RECONNECT_ATTEMPTS = 5;
 
         // --- Helper Functions ---
         const showElement = (id) => document.getElementById(id)?.classList.remove('hidden');
         const hideElement = (id) => document.getElementById(id)?.classList.add('hidden');
-        const setValue = (id, value) => { document.getElementById(id).value = value; };
-        const setContent = (id, text) => { document.getElementById(id).textContent = text; };
-        const setHtml = (id, html) => { document.getElementById(id).innerHTML = html; };
+        const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+        const setContent = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+        const enableElement = (id) => { const el = document.getElementById(id); if (el) el.disabled = false; };
+        const disableElement = (id) => { const el = document.getElementById(id); if (el) el.disabled = true; };
 
         function setStatus(id, message, type = 'info') {
-            const statusEl = document.getElementById(id);
-            if (!statusEl) return;
-            statusEl.textContent = message;
-            statusEl.className = 'status ' + type;
-            showElement(id);
+            const statusEl = document.getElementById(id); if (!statusEl) return;
+            statusEl.textContent = message; statusEl.className = 'status ' + type; showElement(id);
+        }
+        function setWsStatus(message, statusClass) {
+             const wsStatusEl = document.getElementById('ws-status');
+             if (!wsStatusEl) return;
+             wsStatusEl.textContent = `WebSocket: ${message}`;
+             wsStatusEl.className = 'status ' + statusClass;
+             showElement('ws-status');
         }
 
-        function displayQRCode(data) {
-            try {
-                if (!data) {
-                     setHtml('qr-code', '<p style="color: red;">Error: No invoice data for QR code.</p>');
-                     return;
-                }
-                const typeNumber = 0; // Auto-detect size
-                const errorCorrectionLevel = 'L';
-                const qr = qrcode(typeNumber, errorCorrectionLevel);
-                qr.addData(data.toUpperCase()); // Invoices sometimes need uppercasing for QR
-                qr.make();
-                // Smaller QR code (size 4), margin auto centers it
-                setHtml('qr-code', qr.createImgTag(4, 4, "Invoice QR Code"));
-            } catch (e) {
-                 console.error("QR Code generation failed:", e);
-                 setHtml('qr-code', '<p style="color: red;">QR Code Error</p>');
-            }
-        }
+        function displayQRCode(invoiceString) { /* ... unchanged ... */ const qrCodeContainer = document.getElementById('qr-code'); if (!qrCodeContainer) return; try { if (!invoiceString) { setHtml('qr-code', '<p style="color: red;">Error: No invoice data for QR code.</p>'); return; } const typeNumber = 0; const errorCorrectionLevel = 'L'; const qr = qrcode(typeNumber, errorCorrectionLevel); const upperInvoice = invoiceString.toUpperCase(); qr.addData(upperInvoice); qr.make(); const imgTag = qr.createImgTag(5, 5, "Click to Pay Invoice"); setHtml('qr-code', `<a href="lightning:${invoiceString}" title="Click to pay with web+ln capable wallet">${imgTag}</a>`); } catch (e) { console.error("QR Code generation failed:", e); setHtml('qr-code', '<p style="color: red;">QR Code Error</p>'); } }
 
-        // --- LSAT Token Storage (LocalStorage) ---
-        const LSAT_STORAGE_KEY = 'lsat-tokens';
-
-        function storeToken(resourceId, lsatToken, expiresAt) {
-            if (!resourceId || !lsatToken || !expiresAt) return;
-            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
-            tokens[resourceId] = { token: lsatToken, expiresAt: expiresAt };
-            localStorage.setItem(LSAT_STORAGE_KEY, JSON.stringify(tokens));
-            console.log(`Stored token for ${resourceId}`);
-            updateStoredTokensDisplay(); // Update UI
-        }
-
-        function getStoredToken(resourceId) {
-            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
-            const tokenData = tokens[resourceId];
-            // Check if token exists and is not expired (add small buffer like 5 seconds)
-            if (tokenData && tokenData.expiresAt > (Date.now() / 1000 + 5)) {
-                return tokenData.token;
-            }
-            // If expired, remove it
-            if (tokenData) {
-                 console.log(`Stored token for ${resourceId} is expired. Removing.`);
-                 clearToken(resourceId); // Auto-clear expired token on retrieval attempt
-            }
-            return null;
-        }
-
-        function clearToken(resourceId) {
-            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
-            delete tokens[resourceId];
-            localStorage.setItem(LSAT_STORAGE_KEY, JSON.stringify(tokens));
-            console.log(`Cleared token for ${resourceId}`);
-            updateStoredTokensDisplay();
-        }
-
-        function clearAllTokens() {
-            localStorage.removeItem(LSAT_STORAGE_KEY);
-            console.log('Cleared all stored tokens');
-            updateStoredTokensDisplay();
-        }
-
-        function updateStoredTokensDisplay() {
-            const storedTokensEl = document.getElementById('stored-tokens');
-            if (!storedTokensEl) return;
-            const tokens = JSON.parse(localStorage.getItem(LSAT_STORAGE_KEY) || '{}');
-
-            if (Object.keys(tokens).length === 0) {
-                storedTokensEl.innerHTML = '<p>No valid LSAT tokens stored.</p>';
-                return;
-            }
-
-            let html = '<ul>';
-            const now = Date.now() / 1000;
-            for (const [resourceId, data] of Object.entries(tokens)) {
-                if (!data || !data.token || !data.expiresAt) continue; // Skip invalid entries
-                const expiresDate = new Date(data.expiresAt * 1000).toLocaleString();
-                const isExpired = data.expiresAt < now;
-                 // Only show non-expired tokens or add clear indication
-                if(isExpired) {
-                    // Optionally hide expired tokens or mark them clearly
-                     html += `<li style="opacity: 0.5;">`; // Visually indicate expired
-                } else {
-                    html += `<li>`;
-                }
-                 // Display token slightly differently
-                const tokenDisplay = data.token.length > 60
-                    ? `${data.token.substring(0, 15)}...${data.token.substring(data.token.length - 40)}`
-                    : data.token;
-
-                html += `
-                        <strong>Resource:</strong> ${resourceId}<br>
-                        <strong>Expires:</strong> ${expiresDate} ${isExpired ? '<span style="color:red;">(EXPIRED)</span>' : ''}<br>
-                        <strong>Token:</strong> <span title="${data.token}" style="word-break: break-all;">${tokenDisplay}</span><br>
-                        <div class="button-group" style="margin-top: 5px;">
-                         ${!isExpired ? `<button class="use-token-btn" data-resource="${resourceId}">Use Token</button>` : ''}
-                         <button class="delete-token-btn" data-resource="${resourceId}">Delete</button>
-                        </div>
-                    </li>
-                `;
-            }
-            html += '</ul>';
-            storedTokensEl.innerHTML = html;
-
-            // Re-add event listeners
-            document.querySelectorAll('.use-token-btn').forEach(btn => {
-                btn.onclick = async () => { // Use onclick for simplicity here
-                    const resourceId = btn.getAttribute('data-resource');
-                    const token = getStoredToken(resourceId); // getStoredToken handles expiry check
-                    if (token) {
-                         activateTab('request'); // Switch back to request tab
-                         await fetchResourceWithToken(resourceId, token);
-                    } else {
-                         alert(`Token for ${resourceId} is invalid or expired.`);
-                    }
-                };
-            });
-
-            document.querySelectorAll('.delete-token-btn').forEach(btn => {
-                btn.onclick = () => { // Use onclick for simplicity here
-                    const resourceId = btn.getAttribute('data-resource');
-                    clearToken(resourceId);
-                };
-            });
-        }
+        // --- LSAT Token Storage ---
+        const LSAT_STORAGE_KEY = 'lsat-camera-switch-token';
+        function storeToken(lsatToken, expiresAt) { /* ... unchanged ... */ if (!lsatToken || !expiresAt) return; const tokenData = { token: lsatToken, expiresAt: expiresAt }; localStorage.setItem(LSAT_STORAGE_KEY, JSON.stringify(tokenData)); console.log(`Stored Camera Switch token`); }
+        function getStoredToken() { /* ... unchanged ... */ const stored = localStorage.getItem(LSAT_STORAGE_KEY); if (!stored) return null; const tokenData = JSON.parse(stored); if (tokenData && tokenData.expiresAt > (Date.now() / 1000 + 5)) { return tokenData.token; } if (tokenData) { clearToken(); } return null; }
+        function clearToken() { /* ... unchanged ... */ localStorage.removeItem(LSAT_STORAGE_KEY); console.log(`Cleared Camera Switch token`); }
+        function clearAllTokens() { clearToken(); }
 
         // --- L402 Core Logic ---
+        function extractChallenge(headers) { /* ... unchanged ... */ const authHeader = headers.get('WWW-Authenticate'); console.log("Received WWW-Authenticate Header:", authHeader); if (!authHeader || !authHeader.startsWith('LSAT ')) { console.error("WWW-Authenticate header missing or invalid format."); return null; } const macaroonMatch = authHeader.match(/macaroon="([^"]+)"/); const invoiceMatch = authHeader.match(/invoice="([^"]+)"/); if (!macaroonMatch || !invoiceMatch) { console.error("Could not parse macaroon or invoice from challenge header."); return null; } console.log("Parsed Challenge:", { macaroon: macaroonMatch[1].substring(0,10)+"...", invoice: invoiceMatch[1].substring(0,10)+"..."}); return { macaroon: macaroonMatch[1], invoice: invoiceMatch[1] }; }
+        const SERVER_BASE_URL = "https://lightning-goats.com";
+        function getBaseUrl() { return SERVER_BASE_URL; }
+        function createLsatToken(macaroonB64, preimageHex) { /* ... unchanged ... */ if (!macaroonB64 || !preimageHex) return null; return `LSAT ${macaroonB64}:${preimageHex}`; }
 
-        function extractChallenge(headers) {
-            const authHeader = headers.get('WWW-Authenticate');
-            console.log("Received WWW-Authenticate Header:", authHeader); // Log received header
-            if (!authHeader || !authHeader.startsWith('LSAT ')) {
-                console.error("WWW-Authenticate header missing or invalid format.");
-                return null;
+        // --- WebSocket Logic ---
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log("WebSocket already open.");
+                setWsStatus("Connected", "connected");
+                disableElement('check-payment-btn'); // Disable manual check when connected
+                return;
             }
+            // Construct WSS URL from base URL
+            const wsUrl = getBaseUrl().replace(/^http/, 'ws') + '/ws/'; // Assumes /ws endpoint
+            console.log(`Connecting WebSocket to ${wsUrl}...`);
+            setWsStatus("Connecting...", "connecting");
+            hideElement('payment-status'); // Hide payment status while connecting WS
 
-            // Simple parsing for macaroon="..." and invoice="..."
-            const macaroonMatch = authHeader.match(/macaroon="([^"]+)"/);
-            const invoiceMatch = authHeader.match(/invoice="([^"]+)"/);
+            ws = new WebSocket(wsUrl);
 
-            if (!macaroonMatch || !invoiceMatch) {
-                 console.error("Could not parse macaroon or invoice from challenge header.");
-                 return null;
-            }
-             console.log("Parsed Challenge:", { macaroon: macaroonMatch[1].substring(0,10)+"...", invoice: invoiceMatch[1].substring(0,10)+"..."});
+            ws.onopen = () => {
+                console.log("WebSocket connection established.");
+                setWsStatus("Connected", "connected");
+                wsConnected = true;
+                wsReconnectAttempts = 0; // Reset reconnect attempts on success
+                disableElement('check-payment-btn'); // Disable manual check
+                setStatus('payment-status', 'Connected. Waiting for payment confirmation...', 'info');
+            };
 
-            return {
-                macaroon: macaroonMatch[1],
-                invoice: invoiceMatch[1]
+            ws.onmessage = (event) => {
+                console.log("WebSocket message received:", event.data);
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'l402_payment_confirmed' && message.data) {
+                        const receivedHash = message.data.payment_hash;
+                        const expectedHash = window.currentPaymentHash;
+                        console.log(`Received confirmation for hash ${receivedHash}, expecting ${expectedHash}`);
+
+                        if (receivedHash && expectedHash && receivedHash === expectedHash) {
+                            console.log("Matching payment confirmed via WebSocket!");
+                            setStatus('payment-status', 'Payment Confirmed via WebSocket! Fetching Preimage...', 'success');
+                            disconnectWebSocket(); // Close WS once payment is confirmed
+                            // Fetch preimage and proceed
+                            fetchPreimageAndProceed(expectedHash);
+                        } else {
+                             console.log("Received confirmation for a different payment hash.");
+                        }
+                    } else if (message.type === 'info') { // Handle general info messages
+                        setStatus('payment-status', `Info: ${message.data?.message || 'Received info message.'}`, 'info');
+                    }
+                    // Handle other message types if needed
+                } catch (e) {
+                    console.error("Failed to parse WebSocket message:", e);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                setWsStatus(`Error: ${error.message || 'Connection failed'}`, "error");
+                wsConnected = false;
+                enableElement('check-payment-btn'); // Re-enable manual check on WS error
+                // Consider attempting reconnect here or in onClose
+            };
+
+            ws.onclose = (event) => {
+                console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
+                wsConnected = false;
+                ws = null;
+                setWsStatus(`Disconnected. ${event.reason || ''}`, "disconnected");
+                enableElement('check-payment-btn'); // Re-enable manual check
+
+                // Simple Reconnect Logic (optional)
+                if (!event.wasClean && wsReconnectAttempts < MAX_WS_RECONNECT_ATTEMPTS) {
+                     wsReconnectAttempts++;
+                     const delay = Math.pow(2, wsReconnectAttempts) * 1000; // Exponential backoff
+                     console.log(`Attempting WebSocket reconnect #${wsReconnectAttempts} in ${delay/1000}s...`);
+                     setTimeout(connectWebSocket, delay);
+                     setWsStatus(`Disconnected. Retrying (${wsReconnectAttempts}/${MAX_WS_RECONNECT_ATTEMPTS})...`, "disconnected");
+                } else if (!event.wasClean) {
+                     setWsStatus(`Disconnected permanently after ${wsReconnectAttempts} retries. Please check connection or refresh.`, "error");
+                }
             };
         }
 
-        function getCurrentResourceId() {
-            const select = document.getElementById('resource-id');
-            return select.value === 'custom' ? document.getElementById('custom-resource').value.trim() : select.value;
+        function disconnectWebSocket() {
+             if (ws) {
+                 console.log("Disconnecting WebSocket.");
+                 ws.close(1000, "Client disconnecting"); // Normal closure
+                 ws = null;
+                 wsConnected = false;
+             }
         }
 
-        // Hardcode the base URL
-        const SERVER_BASE_URL = "https://lightning-goats.com";
-
-        function getBaseUrl() {
-            // Return the hardcoded constant
-            return SERVER_BASE_URL;
-        }
-
-
-        function createLsatToken(macaroonB64, preimageHex) {
-            if (!macaroonB64 || !preimageHex) return null;
-            return `LSAT ${macaroonB64}:${preimageHex}`;
-        }
-
-        async function checkPaymentStatus(paymentHash) {
-            if (!paymentHash) {
-                 setStatus('payment-status', 'Error: No payment hash available.', 'error');
-                 return false;
-            }
-            setStatus('payment-status', `Checking payment status for ${paymentHash.substring(0,10)}...`, 'info');
-            document.getElementById('check-payment-btn').disabled = true;
-
-            try {
+        async function fetchPreimageAndProceed(paymentHash) {
+             if (!paymentHash) return;
+             setStatus('payment-status', `Fetching payment details for ${paymentHash.substring(0,10)}...`, 'info');
+             try {
                 const response = await fetch(`${getBaseUrl()}/l402/payment/${paymentHash}`);
-                if (!response.ok) {
-                    if (response.status === 404) {
-                         setStatus('payment-status', `Payment ${paymentHash.substring(0,10)}... not found or expired.`, 'info');
-                         stopAutoCheck(); // Stop checking if not found
-                         return false;
-                    }
-                    const errorText = await response.text();
-                    throw new Error(`Server error ${response.status}: ${errorText}`);
-                }
-
+                if (!response.ok) { throw new Error(`Server error ${response.status} fetching payment details.`); }
                 const data = await response.json();
-                console.log("Payment Check Response:", data);
 
-                if (data.status === 'paid' && data.preimage) {
-                    setStatus('payment-status', 'Payment confirmed! Preimage received. Requesting resource...', 'success');
-                    setValue('preimage', data.preimage); // Display preimage
-
-                    const macaroon = window.currentMacaroon;
-                    const resourceId = window.currentResourceId;
-                    if (macaroon && resourceId) {
-                        const token = createLsatToken(macaroon, data.preimage);
-                        if (token) {
-                             stopAutoCheck();
-                             await fetchResourceWithToken(resourceId, token);
-                             return true;
-                        } else { setStatus('payment-status', 'Failed to construct LSAT token after payment.', 'error'); }
-                    } else { setStatus('payment-status', 'Internal client error: Missing macaroon/resource ID after payment.', 'error'); }
-                    return true;
-                } else if (data.status === 'paid') {
-                     setStatus('payment-status', 'Payment confirmed, but server did not provide preimage. Manual entry might be needed if available.', 'warning');
-                     stopAutoCheck();
-                     return true;
-                } else if (data.status === 'pending') {
-                    setStatus('payment-status', `Payment status: Pending. Keep waiting or check wallet.`, 'info');
-                    return false;
-                } else {
-                    setStatus('payment-status', `Payment status: ${data.status || 'Unknown'}. ${data.message || ''}`, 'info');
-                    if (data.status === 'expired' || data.status === 'error' || data.status === 'not_found') {
-                         stopAutoCheck();
-                    }
-                    return false;
-                }
-            } catch (error) {
-                console.error("Error checking payment:", error);
-                setStatus('payment-status', `Error checking payment: ${error.message}`, 'error');
-                document.getElementById('check-payment-btn').disabled = false; // Re-enable button on error
-                return false; // Consider stopping check on persistent errors?
-            } finally {
-                // Re-enable button unless already handled by stopping check
-                 if(checkInterval) {
-                     document.getElementById('check-payment-btn').disabled = false;
+                 if (data.status === 'paid' && data.preimage && data.preimage !== "0" * 64) {
+                     setStatus('payment-status', 'Preimage received! Accessing Camera Switch...', 'success');
+                     const macaroon = window.currentMacaroon;
+                     const resourceId = CAMERA_SWITCH_RESOURCE_ID;
+                     if (macaroon && resourceId) {
+                         const token = createLsatToken(macaroon, data.preimage);
+                         if (token) {
+                              await fetchResourceWithToken(resourceId, token);
+                         } else { throw new Error('Failed to construct LSAT token.'); }
+                     } else { throw new Error('Internal client error: Missing macaroon/resource ID.'); }
+                 } else {
+                      throw new Error(`Payment details indicate not paid or invalid preimage received (Status: ${data.status}).`);
                  }
-            }
+             } catch (error) {
+                 console.error("Error fetching preimage/accessing resource:", error);
+                 setStatus('payment-status', `Error: ${error.message}`, 'error');
+                 // Maybe show re-request button or manual check button prominently here
+                 enableElement('check-payment-btn');
+             }
         }
 
-        async function requestResource() {
-            hideElement('invoice-card');
-            hideElement('resource-card');
-            setStatus('request-status', 'Requesting resource...', 'info');
-            document.getElementById('request-btn').disabled = true;
-            stopAutoCheck(); // Stop any previous checks
 
-            const resourceId = getCurrentResourceId();
-            if (!resourceId) {
-                setStatus('request-status', 'Please select or enter a resource ID', 'error');
-                document.getElementById('request-btn').disabled = false;
-                return;
-            }
-            window.currentResourceId = resourceId; // Store globally for this flow
-            window.currentMacaroon = null; // Clear previous challenge details
-            window.currentPaymentHash = null;
-            window.currentToken = null; // Clear previous successful token
+        // --- Modified Main Request Flow ---
+        async function requestCameraSwitchAccess() {
+             hideElement('invoice-card');
+             hideElement('resource-card');
+             setStatus('request-status', 'Requesting Camera Switch Access...', 'info');
+             const requestButton = document.getElementById('request-btn');
+             if(requestButton) requestButton.disabled = true;
+             disconnectWebSocket(); // Disconnect previous WS if re-requesting
 
+             const resourceId = CAMERA_SWITCH_RESOURCE_ID;
+             window.currentResourceId = resourceId;
+             window.currentMacaroon = null; window.currentPaymentHash = null; window.currentToken = null;
 
-            // 1. Check for a valid stored token first
-            const storedToken = getStoredToken(resourceId);
-            if (storedToken) {
-                setStatus('request-status', 'Found valid stored token. Attempting access...', 'info');
-                console.log(`Using stored token for ${resourceId}`);
-                document.getElementById('request-btn').disabled = false;
-                await fetchResourceWithToken(resourceId, storedToken);
-                return; // Stop here if token works or fails
-            }
-            setStatus('request-status', 'No valid stored token found. Requesting resource access...', 'info');
+             // 1. Check stored token
+             const storedToken = getStoredToken();
+             if (storedToken) {
+                 setStatus('request-status', 'Found valid stored token. Attempting access...', 'info');
+                 if(requestButton) requestButton.disabled = false;
+                 await fetchResourceWithToken(resourceId, storedToken);
+                 return;
+             }
+             setStatus('request-status', 'No valid token. Requesting Camera Switch invoice...', 'info');
 
-            // 2. No valid token, request resource to initiate L402 flow
-            try {
-                const url = `${getBaseUrl()}/l402/protected/${resourceId}`;
-                const response = await fetch(url);
+             // 2. Fetch to get 402 challenge
+             try {
+                 const url = `${getBaseUrl()}/l402/protected/${resourceId}`;
+                 const response = await fetch(url);
 
-                if (response.ok) {
-                    console.warn("Received resource directly without 402 challenge.");
-                    const data = await response.json();
-                    setStatus('request-status', 'Access granted directly (no payment required?).', 'success');
-                    displayResource(data, null);
-                } else if (response.status === 402) {
-                    const challenge = extractChallenge(response.headers);
-                    let responseData = {};
-                    try { responseData = await response.json(); }
-                    catch(e) { console.error("402 response body was not valid JSON or empty."); }
+                 if (response.ok) { /* ... handle direct access ... */ setStatus('request-status', 'Access granted directly.', 'success'); displayResource(await response.json(), null); }
+                 else if (response.status === 402) {
+                      const challenge = extractChallenge(response.headers);
+                      let responseData = {}; try { responseData = await response.json(); } catch(e){ console.warn("402 body parse failed");}
+                      const macaroon = challenge?.macaroon; const invoice = challenge?.invoice || responseData.invoice; const paymentHash = responseData.payment_hash; const amount = responseData.amount || '?';
+                      if (!macaroon || !invoice || !paymentHash) { throw new Error('Server sent invalid 402 response.'); }
 
-                    // Combine data from header and body (prefer body for details)
-                    const invoice = responseData.invoice || (challenge ? challenge.invoice : null);
-                    const macaroon = challenge ? challenge.macaroon : null;
-                    const paymentHash = responseData.payment_hash || null;
-                    const amount = responseData.amount || '?'; // Amount might not be in header
+                      setStatus('request-status', 'Payment required. Invoice details below.', 'info');
+                      window.currentMacaroon = macaroon;
+                      window.currentPaymentHash = paymentHash; // Store hash to wait for WS message
 
-                    if (!macaroon || !invoice || !paymentHash) {
-                          console.error("Challenge Header:", challenge);
-                          console.error("Response Body:", responseData);
-                          throw new Error('Server sent invalid 402 Payment Required response (missing macaroon, invoice, or payment_hash).');
-                    }
+                      setValue('invoice', invoice); setValue('payment-hash', paymentHash);
+                      setContent('invoice-amount', amount); setValue('preimage','');
+                      displayQRCode(invoice);
 
-                    setStatus('request-status', 'Payment required. Invoice details below.', 'info');
-
-                    window.currentMacaroon = macaroon;
-                    window.currentPaymentHash = paymentHash;
-
-                    setValue('invoice', invoice);
-                    setValue('payment-hash', paymentHash);
-                    setContent('invoice-amount', amount);
-                    setValue('preimage','');
-                    displayQRCode(invoice);
-
-                    hideElement('resource-card');
-                    showElement('invoice-card');
-                    setStatus('payment-status', 'Please pay the invoice to access the resource.', 'info');
-                    startAutoCheck();
-
-                } else {
-                    const errorText = await response.text();
-                    throw new Error(`Server error ${response.status}: ${errorText}`);
-                }
-            } catch (error) {
-                console.error("Error requesting resource:", error);
-                setStatus('request-status', `Error: ${error.message}`, 'error');
-            } finally {
-                document.getElementById('request-btn').disabled = false;
-            }
+                      hideElement('resource-card'); showElement('invoice-card');
+                      setStatus('payment-status', 'Please pay the invoice. Listening for confirmation via WebSocket...', 'info');
+                      connectWebSocket(); // <<< Connect WebSocket AFTER showing invoice
+                 } else { /* ... handle other errors (409, etc) ... */ const errorText = await response.text(); if (response.status === 409 || response.status === 403) { setStatus('request-status', `Access Denied: ${errorText || response.statusText}`, 'error'); } else { throw new Error(`Server error ${response.status}: ${errorText}`); } }
+             } catch (error) { console.error("Error requesting Camera Switch:", error); setStatus('request-status', `Error: ${error.message}`, 'error'); }
+             finally { if(requestButton) requestButton.disabled = false; }
         }
 
         async function fetchResourceWithToken(resourceId, lsatToken) {
-            if (!resourceId || !lsatToken) {
-                alert('Missing resource ID or LSAT token for request.');
-                return;
-            }
-            setStatus('request-status', `Accessing ${resourceId} with token...`, 'info');
-            hideElement('invoice-card');
-
-            try {
-                const url = `${getBaseUrl()}/l402/protected/${resourceId}`;
-                const response = await fetch(url, {
-                    headers: { 'Authorization': lsatToken }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setStatus('request-status', 'Resource accessed successfully!', 'success');
-                    displayResource(data, lsatToken);
-                } else if (response.status === 401 || response.status === 403) {
-                    console.warn(`Token access failed (${response.status}). Clearing stored token.`);
-                    const errorText = await response.text();
-                    setStatus('request-status', `Access denied (${response.status}): Token invalid or expired. Details: ${errorText}`, 'error');
-                    clearToken(resourceId);
-                    window.currentToken = null;
-                    hideElement('resource-card');
-                } else {
-                    const errorText = await response.text();
-                    throw new Error(`Server error ${response.status}: ${errorText}`);
-                }
-            } catch (error) {
-                console.error("Error fetching resource with token:", error);
-                setStatus('request-status', `Error accessing resource: ${error.message}`, 'error');
-                hideElement('resource-card');
-            }
+             // ... (Implementation remains largely the same, now called after WS confirms + preimage fetch) ...
+              if (resourceId !== CAMERA_SWITCH_RESOURCE_ID || !lsatToken) { alert('Invalid parameters.'); return; } setStatus('request-status', `Accessing Camera Switch with token...`, 'info'); hideElement('invoice-card'); try { const url = `${getBaseUrl()}/l402/protected/${resourceId}`; const response = await fetch(url, { headers: { 'Authorization': lsatToken } }); if (response.ok) { const data = await response.json(); setStatus('request-status', 'Camera Switch accessed successfully!', 'success'); displayResource(data, lsatToken); } else if (response.status === 401 || response.status === 403 || response.status === 409) { console.warn(`Token access failed (${response.status}). Clearing stored token.`); const errorBody = await response.json(); const errorDetail = errorBody.detail || response.statusText; setStatus('request-status', `Access denied (${response.status}): ${errorDetail}. Token might be invalid/expired or resource in use.`, 'error'); clearToken(); window.currentToken = null; hideElement('resource-card'); } else { const errorText = await response.text(); throw new Error(`Server error ${response.status}: ${errorText}`); } } catch (error) { console.error("Error fetching Camera Switch with token:", error); setStatus('request-status', `Error accessing Camera Switch: ${error.message}`, 'error'); hideElement('resource-card'); }
         }
 
-        // Display resource content and store token
         function displayResource(data, lsatTokenUsed) {
-            const contentEl = document.getElementById('resource-content');
-            const tokenInfoEl = document.getElementById('token-info');
-
-            contentEl.textContent = JSON.stringify(data, null, 2);
-
-            if (lsatTokenUsed && data.resource_id && data.access_expires) {
-                window.currentToken = lsatTokenUsed;
-
-                const expiresDate = new Date(data.access_expires * 1000).toLocaleString();
-                const tokenDisplay = lsatTokenUsed.length > 60
-                    ? `${lsatTokenUsed.substring(0, 15)}...${lsatTokenUsed.substring(lsatTokenUsed.length - 40)}`
-                    : lsatTokenUsed;
-
-                tokenInfoEl.textContent = `Token Used: ${tokenDisplay}\nResource: ${data.resource_id}\nExpires: ${expiresDate}`;
-                storeToken(data.resource_id, lsatTokenUsed, data.access_expires);
-            } else {
-                tokenInfoEl.textContent = 'Resource accessed (no token info available or needed).';
-                window.currentToken = null;
-            }
-            hideElement('invoice-card');
-            showElement('resource-card');
-            setStatus('request-status', 'Resource displayed.', 'success');
-        }
-
-        // --- Auto Check Payment ---
-        function startAutoCheck() {
-            stopAutoCheck(); // Clear previous interval if any
-            if (!document.getElementById('auto-check').checked) {
-                 console.log("Auto-check disabled.");
-                 return;
-            }
-            const paymentHash = window.currentPaymentHash;
-            if (!paymentHash || document.getElementById('invoice-card').classList.contains('hidden')) {
-                 console.log("Auto-check not starting (no hash or invoice card not visible).");
-                 return;
-            }
-
-            console.log("Starting auto-check for payment status...");
-            // Initial check slightly delayed
-            setTimeout(() => {
-                 // Check immediately once
-                 if (window.currentPaymentHash && !document.getElementById('invoice-card').classList.contains('hidden')) {
-                      checkPaymentStatus(window.currentPaymentHash);
-                 }
-                 // Then set interval if still needed
-                 if (checkInterval === null) { // Avoid setting interval if checkPaymentStatus already cleared it
-                    checkInterval = setInterval(async () => {
-                        if (window.currentPaymentHash && !document.getElementById('invoice-card').classList.contains('hidden')) {
-                            try { await checkPaymentStatus(window.currentPaymentHash); }
-                            catch (e) { console.error("Error during auto-check interval:", e); }
-                        } else {
-                            console.log("Stopping auto-check (invoice card hidden or hash cleared).");
-                            stopAutoCheck();
-                        }
-                    }, 3000); // Check every 3 seconds
-                 }
-            }, 500); // Start checks after 500ms
-        }
-
-
-        function stopAutoCheck() {
-            if (checkInterval) {
-                clearInterval(checkInterval);
-                checkInterval = null;
-                console.log("Stopped auto-checking payment status.");
-                // Re-enable manual check button if needed
-                 document.getElementById('check-payment-btn').disabled = false;
-            }
-        }
-
-        // --- Tab Management ---
-        function activateTab(tabIdToShow) {
-             document.querySelectorAll('.tab').forEach(tab => {
-                  const tabId = tab.getAttribute('data-tab');
-                  const content = document.getElementById(`${tabId}-tab`);
-                  if(!content) return; // Skip if content element doesn't exist
-                  if (tabId === tabIdToShow) {
-                       tab.classList.add('active');
-                       content.classList.remove('hidden');
-                  } else {
-                       tab.classList.remove('active');
-                       content.classList.add('hidden');
-                  }
-             });
-             if (tabIdToShow !== 'request') stopAutoCheck();
-             if (tabIdToShow === 'tokens') updateStoredTokensDisplay();
+            // ... (Implementation unchanged) ...
+             const contentEl = document.getElementById('resource-content'); const tokenInfoEl = document.getElementById('token-info'); try { if (typeof data === 'object') { contentEl.textContent = JSON.stringify(data, null, 2); } else { contentEl.textContent = data; } } catch (e) { contentEl.textContent = String(data); } if (lsatTokenUsed && data.resource_id === CAMERA_SWITCH_RESOURCE_ID && data.access_expires) { window.currentToken = lsatTokenUsed; const expiresDate = new Date(data.access_expires * 1000).toLocaleString(); const tokenDisplay = lsatTokenUsed.length > 60 ? `${lsatTokenUsed.substring(0, 15)}...${lsatTokenUsed.substring(lsatTokenUsed.length - 40)}` : lsatTokenUsed; tokenInfoEl.textContent = `Token Used: ${tokenDisplay}\nResource: Camera Switch\nExpires: ${expiresDate}`; storeToken(lsatTokenUsed, data.access_expires); } else { tokenInfoEl.textContent = 'Camera Switch accessed (no LSAT token info available or needed).'; window.currentToken = null; } hideElement('invoice-card'); showElement('resource-card'); const reqStatusEl = document.getElementById('request-status'); if (reqStatusEl && !reqStatusEl.classList.contains('error')) { hideElement('request-status'); }
         }
 
         // --- Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', () => activateTab(tab.getAttribute('data-tab')));
-            });
+            // Removed Tab Listeners
 
-            document.getElementById('resource-id').addEventListener('change', function() {
-                if (this.value === 'custom') showElement('custom-resource-group');
-                else hideElement('custom-resource-group');
-            });
+            // Main Request button
+            document.getElementById('request-btn').addEventListener('click', requestCameraSwitchAccess);
 
-            document.getElementById('request-btn').addEventListener('click', requestResource);
+            // Invoice Buttons
+            document.getElementById('copy-invoice-btn').addEventListener('click', () => { /* ... unchanged ... */ const invoiceEl = document.getElementById('invoice'); navigator.clipboard.writeText(invoiceEl.value).then(() => { alert('Invoice copied to clipboard!'); }).catch(err => { console.error('Failed to copy invoice: ', err); alert('Failed to copy invoice.'); }); });
 
-            document.getElementById('copy-invoice-btn').addEventListener('click', () => {
-                const invoiceEl = document.getElementById('invoice');
-                navigator.clipboard.writeText(invoiceEl.value).then(() => {
-                    alert('Invoice copied to clipboard!');
-                }).catch(err => { console.error('Failed to copy invoice: ', err); alert('Failed to copy invoice.'); });
-            });
-            document.getElementById('open-wallet-btn').addEventListener('click', () => {
-                const invoice = document.getElementById('invoice').value;
-                if (invoice) window.open(`lightning:${invoice}`);
-            });
-
+            // Manual Payment Check Button (Fallback)
             document.getElementById('check-payment-btn').addEventListener('click', () => {
-                const paymentHash = window.currentPaymentHash || document.getElementById('payment-hash').value;
-                if(paymentHash) checkPaymentStatus(paymentHash);
-                else alert("No payment hash available to check.");
+                 const paymentHash = window.currentPaymentHash || document.getElementById('payment-hash').value;
+                 if(paymentHash && !wsConnected) { // Only allow manual check if WS not connected
+                     checkPaymentStatus(paymentHash);
+                 } else if(wsConnected) {
+                      alert("WebSocket is connected. Waiting for automatic confirmation.");
+                 } else {
+                      alert("No payment hash available to check.");
+                 }
             });
-            document.getElementById('auto-check').addEventListener('change', (e) => {
-                 if (e.target.checked) startAutoCheck(); else stopAutoCheck();
-            });
+            // Removed Auto-check Listener
+
+            // Manual Preimage Button
              document.getElementById('use-preimage-btn').addEventListener('click', async () => {
-                const preimage = document.getElementById('preimage').value.trim();
-                const macaroon = window.currentMacaroon;
-                const resourceId = window.currentResourceId;
+                 const preimage = document.getElementById('preimage').value.trim();
+                 const macaroon = window.currentMacaroon;
+                 const resourceId = CAMERA_SWITCH_RESOURCE_ID;
+                 if (!preimage || preimage.length !== 64 || !/^[0-9a-fA-F]+$/.test(preimage)) { alert('Please enter a valid 64-character hex preimage.'); return; }
+                 if (!macaroon || !resourceId) { alert('Missing challenge information. Please request access first.'); return; }
+                 setStatus('payment-status', 'Attempting access with manual preimage...', 'info');
+                 const token = createLsatToken(macaroon, preimage);
+                 if (token) {
+                      disconnectWebSocket(); // Disconnect WS if using manual preimage
+                      await fetchResourceWithToken(resourceId, token);
+                 } else { alert('Failed to create token with provided details.'); }
+             });
 
-                if (!preimage || preimage.length !== 64 || !/^[0-9a-fA-F]+$/.test(preimage)) { // Added hex check
-                    alert('Please enter a valid 64-character hex preimage.'); return;
-                }
-                if (!macaroon || !resourceId) {
-                    alert('Missing challenge information (macaroon/resource ID). Please request the resource first.'); return;
-                }
+            // Resource Card Buttons
+            document.getElementById('access-again-btn').addEventListener('click', async () => { /* ... unchanged ... */ const resourceId = CAMERA_SWITCH_RESOURCE_ID; const token = window.currentToken || getStoredToken(); if (token && resourceId) { await fetchResourceWithToken(resourceId, token); } else { alert('No valid token available. Please request access again.'); } });
+            document.getElementById('clear-token-btn').addEventListener('click', () => { /* ... unchanged ... */ clearToken(); window.currentToken = null; alert(`Camera Switch token cleared.`); hideElement('resource-card'); setStatus('request-status', `Camera Switch token cleared.`, 'info'); disconnectWebSocket(); }); // Disconnect WS on clear
 
-                setStatus('payment-status', 'Attempting access with manual preimage...', 'info');
-                const token = createLsatToken(macaroon, preimage);
-                if (token) {
-                     stopAutoCheck();
-                     await fetchResourceWithToken(resourceId, token);
-                } else { alert('Failed to create token with provided details.'); }
-            });
-
-            document.getElementById('access-again-btn').addEventListener('click', async () => {
-                const resourceId = window.currentResourceId;
-                const token = window.currentToken;
-                if (token && resourceId) {
-                    await fetchResourceWithToken(resourceId, token);
-                } else { alert('No valid token available from the current session. Please request the resource again.'); }
-            });
-            document.getElementById('clear-token-btn').addEventListener('click', () => {
-                const resourceId = window.currentResourceId;
-                if (resourceId) {
-                    clearToken(resourceId);
-                    window.currentToken = null;
-                    alert(`Token for ${resourceId} cleared.`);
-                    hideElement('resource-card');
-                    setStatus('request-status', `Token for ${resourceId} cleared.`, 'info');
-                } else { alert('No resource context to clear token for.'); }
-            });
-
-            document.getElementById('clear-all-tokens-btn').addEventListener('click', () => {
-                if (confirm('Are you sure you want to clear ALL stored LSAT tokens?')) {
-                    clearAllTokens();
-                    alert('All tokens cleared.');
-                }
-            });
+            // Removed Stored Tokens Clear Button listener
 
             // Initial setup
-            updateStoredTokensDisplay();
-            activateTab('request');
+            requestCameraSwitchAccess(); // Auto-load the camera switch on page load
+        });
+
+        // Add cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+             disconnectWebSocket();
         });
     </script>
 </body>

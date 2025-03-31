@@ -159,9 +159,9 @@ async def protected_resource_example(
         # Determine content based on resource ID
         content = f"This is the super secret protected content for resource: {resource_id}."
         if resource_id == "basic-feed":
-            content = "This is the basic goat feed with cute goat pictures! Baaah!"
+            content = "Lightning Goats Camera Switch Access"
         elif resource_id == "premium-feed":
-            content = "Welcome to the premium feed with ultra-HD goat photos and exclusive goat videos! Fancy Baaah!"
+            content = "Lightning Goats Advertising Access"
 
         expires_at = verified_token_data.get("expires_at", 0)
         user_id = verified_token_data.get('user_id') or 'anonymous'

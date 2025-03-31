@@ -4,6 +4,8 @@ import json
 from typing import Dict, Optional, List, Any, Union
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 import math # Import math for ceiling calculation
+import time # Import time for timestamp calculation
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -209,14 +211,22 @@ class PaymentService:
             response = await self.http_client.get(url, headers=headers)
             response.raise_for_status() # Raise for 4xx/5xx
             response_data = response.json()
-            logger.debug(f"Fetched targets response: {response_data}")
+            logger.debug(f"Fetched targets response type: {type(response_data)}")
 
-            # Ensure 'targets' key exists, default to empty list if not
-            if "targets" not in response_data or not isinstance(response_data["targets"], list):
-                 logger.warning("LNbits response missing 'targets' list, returning empty list.")
-                 response_data["targets"] = []
-
-            return response_data
+            # Handle different response formats - the API may return an array directly
+            # or it might return an object with a "targets" key
+            if isinstance(response_data, list):
+                # If API returns a direct array, wrap it in the expected format
+                logger.info(f"API returned direct array of {len(response_data)} targets, wrapping in 'targets' key")
+                return {"targets": response_data}
+            elif isinstance(response_data, dict) and "targets" in response_data:
+                # If API returns the expected format, use it as is
+                logger.debug(f"API returned expected format with 'targets' key, containing {len(response_data['targets'])} targets")
+                return response_data
+            else:
+                # If format is unrecognized, return empty targets
+                logger.warning(f"Unrecognized API response format: {type(response_data)}. Returning empty targets list.")
+                return {"targets": []}
 
         except httpx.HTTPStatusError as e:
              # 404 might be valid if no targets set yet, return empty list
@@ -465,3 +475,73 @@ class PaymentService:
         except Exception as e:
             self.logger.error(f"Unexpected error decoding invoice: {e}", exc_info=True)
             return None
+
+    @http_retry_strategy
+    async def get_recent_payments(self, wallet_key: str = None, limit: int = 50, offset: int = 0, hours_ago: int = 24) -> List[Dict[str, Any]]:
+        """
+        Retrieve recent payments from a wallet.
+        """
+        wallet_key = wallet_key or self.herd_key
+        self.logger.info(f"Retrieving recent payments (limit={limit}, hours_ago={hours_ago})")
+        
+        # Calculate timestamp for filtering (milliseconds)
+        since_timestamp = int((time.time() - (hours_ago * 3600)) * 1000)
+        
+        try:
+            # LNBits API endpoint for listing payments
+            url = f"{self.lnbits_url}/api/v1/payments"
+            
+            # Headers with wallet key for authentication
+            headers = {
+                "X-Api-Key": wallet_key,
+                "Content-Type": "application/json"
+            }
+            
+            # Query parameters
+            params = {
+                "limit": limit,
+                "offset": offset,
+            }
+            
+            self.logger.debug(f"Requesting payments from: {url}")
+            response = await self.http_client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            
+            # Parse response data
+            response_data = response.json()
+            self.logger.debug(f"Response status code: {response.status_code}")
+            
+            # Determine format - LNBits API can return array or object with 'payments' array
+            if isinstance(response_data, list):
+                payments = response_data
+                self.logger.debug(f"Response contains a list of {len(payments)} payments")
+            elif isinstance(response_data, dict) and "payments" in response_data:
+                payments = response_data.get("payments", [])
+                self.logger.debug(f"Response contains a dict with {len(payments)} payments")
+            else:
+                self.logger.warning(f"Unexpected response format: {type(response_data)}")
+                payments = []
+            
+            # Filter out to only include recent payments (since LNBits API might not filter by date)
+            recent_payments = []
+            for payment in payments:
+                payment_time = payment.get("time", 0)
+                payment_amount = payment.get("amount", 0)
+                
+                # Include only incoming payments within the time window
+                if payment_time >= since_timestamp/1000 and payment_amount > 0:
+                    payment_hash = payment.get('checking_id') or payment.get('payment_hash', 'unknown')
+                    payment_time_str = datetime.datetime.fromtimestamp(payment_time).strftime('%Y-%m-%d %H:%M:%S') if payment_time else 'unknown'
+                    self.logger.debug(f"Including payment: {payment_hash[:8]}... ({payment_amount/1000} sats) from {payment_time_str}")
+                    recent_payments.append(payment)
+                elif payment_amount <= 0:
+                    self.logger.debug(f"Skipping outgoing payment: {payment.get('checking_id', 'unknown')[:8]}... ({payment_amount/1000} sats)")
+                elif payment_time < since_timestamp/1000:
+                    self.logger.debug(f"Skipping old payment: {payment.get('checking_id', 'unknown')[:8]}... (time: {payment_time}, cutoff: {since_timestamp/1000})")
+            
+            self.logger.info(f"Found {len(recent_payments)} recent incoming payments in the last {hours_ago} hours")
+            return recent_payments
+            
+        except Exception as e:
+            self.logger.error(f"Error retrieving recent payments: {e}", exc_info=True)
+            return []
