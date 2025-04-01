@@ -95,53 +95,66 @@ class PaymentService:
         try:
             url = f"{self.lnbits_url}/api/v1/payments"
             headers = {"X-API-KEY": key, "Content-Type": "application/json"}
-            data = {"out": False, "amount": amount, "unit": "sat", "memo": memo}
+            
+            # Create request payload exactly as the LNBits API expects it
+            data = {
+                "out": False,      # False for invoice creation (incoming payment)
+                "amount": amount,  # Amount in satoshis 
+                "unit": "sat",     # Use 'sat' as the unit
+                "memo": memo,      # Description/memo field
+                "internal": False  # Not an internal payment
+            }
+            
             logger.debug(f"Creating invoice (key: ...{key[-4:]}) with data: {data}")
             response = await self.http_client.post(url, json=data, headers=headers)
             response.raise_for_status()
+            
+            # Parse and validate response
             result = response.json()
-            if 'payment_hash' not in result or 'payment_request' not in result:
-                 logger.error(f"LNBits create_invoice response missing required fields: {result}")
-                 raise ValueError("Invalid response from LNBits invoice creation.")
+            logger.debug(f"LNBits invoice creation response: {result}")
+            
+            # Check for required fields in the LNBits response
+            # This handles both older 'bolt11' field and newer 'payment_request' field
+            required_fields = ['payment_hash', 'checking_id']
+            missing_fields = []
+            
+            for field in required_fields:
+                if field not in result:
+                    missing_fields.append(field)
+                    
+            # Check either payment_request or bolt11 is present
+            if 'payment_request' not in result and 'bolt11' not in result:
+                missing_fields.append('payment_request/bolt11')
+                
+            if missing_fields:
+                logger.error(f"LNBits create_invoice response missing fields: {missing_fields}. Got: {list(result.keys())}")
+                raise ValueError(f"Invalid response from LNBits invoice creation: missing {', '.join(missing_fields)}")
+            
+            # Normalize response - LNBits sometimes returns 'bolt11' instead of 'payment_request'
+            if 'bolt11' in result and 'payment_request' not in result:
+                result['payment_request'] = result['bolt11']
+                
+            # Ensure checking_id is also copied to payment_hash if needed
+            if 'checking_id' in result and ('payment_hash' not in result or not result['payment_hash']):
+                result['payment_hash'] = result['checking_id']
+                
             logger.info(f"Invoice created: hash={result['payment_hash'][:10]}...")
             return result
+        
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error creating invoice ({e.response.status_code}): {e.response.text}")
-            raise
+            error_body = e.response.text
+            try:
+                error_json = e.response.json()
+                error_detail = error_json.get('detail', error_body)
+            except:
+                error_detail = error_body
+                
+            logger.error(f"HTTP error creating invoice ({e.response.status_code}): {error_detail}")
+            raise Exception(f"Failed to create invoice: {error_detail}") from e
         except Exception as e:
             logger.error(f"Unexpected error creating invoice: {e}", exc_info=True)
             raise
 
-    @http_retry_strategy
-    async def pay_invoice(self, payment_request: str, wallet_key: Optional[str] = None) -> Dict[str, Any]:
-        """Pay a Lightning invoice."""
-        key = wallet_key or self.herd_key
-        if not self.http_client:
-             raise RuntimeError("HTTP client not initialized. Call initialize() first.")
-        headers = {"X-API-KEY": key, "Content-Type": "application/json"}
-        data = {"out": True, "bolt11": payment_request}
-        try:
-            url = f"{self.lnbits_url}/api/v1/payments"
-            logger.info(f"Attempting to pay invoice using key ...{key[-4:]}")
-            response = await self.http_client.post(url, headers=headers, json=data)
-            response.raise_for_status()
-            result = response.json()
-            if 'payment_hash' in result:
-                logger.info(f"Payment submitted successfully: hash={result.get('payment_hash')}")
-            else:
-                logger.warning(f"Payment submission response did not contain payment_hash: {result}")
-            return result
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error paying invoice ({e.response.status_code}): {e.response.text}")
-            error_detail = e.response.text
-            try: error_detail = e.response.json().get("detail", error_detail)
-            except Exception: pass
-            raise Exception(f"Failed to pay invoice: {error_detail}") from e
-        except Exception as e:
-            logger.error(f"Unexpected error paying invoice: {e}", exc_info=True)
-            raise
-
-    @http_retry_strategy
     async def make_lnurl_payment(
         self, lud16: str, msat_amount: int, description: str = "",
         key: Optional[str] = None, event_id: Optional[str] = None,

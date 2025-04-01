@@ -326,22 +326,34 @@ class PaymentProcessorService:
         try:
             logger.info(f"Creating invoice for {balance} sats with memo: '{memo}'")
             
-            # Create the invoice
-            invoice_data = await self.payment_service.create_invoice(
-                amount=balance,
-                memo=memo,
-                wallet_key=self.payment_service.cyberherd_key
-            )
-            
-            if not invoice_data or 'payment_request' not in invoice_data:
-                logger.error("Failed to create invoice: Invalid response")
-                return {"success": False, "message": "Invalid invoice response"}
-            
-            payment_request = invoice_data['payment_request']
-            logger.info(f"Paying invoice for {balance} sats")
+            # Create the invoice with better error handling
+            try:
+                invoice_data = await self.payment_service.create_invoice(
+                    amount=balance,
+                    memo=memo,
+                    wallet_key=self.payment_service.cyberherd_key
+                )
+                
+                if not invoice_data or 'payment_request' not in invoice_data:
+                    logger.error(f"Invalid invoice response: {invoice_data}")
+                    return {"success": False, "message": "Invalid invoice response from LNBits"}
+                    
+                # Log the payment hash right after creation for debugging
+                payment_hash = invoice_data.get('payment_hash', 'unknown')
+                logger.info(f"Invoice created successfully with hash: {payment_hash[:10]}...")
+                
+            except Exception as invoice_err:
+                logger.error(f"Failed to create invoice: {invoice_err}")
+                return {"success": False, "message": f"Failed to create invoice: {str(invoice_err)}"}
             
             # Pay the invoice
-            payment_result = await self.payment_service.pay_invoice(payment_request)
+            try:
+                payment_request = invoice_data['payment_request']
+                logger.info(f"Paying invoice for {balance} sats")
+                payment_result = await self.payment_service.pay_invoice(payment_request)
+            except Exception as payment_err:
+                logger.error(f"Failed to pay invoice {payment_hash[:10]}: {payment_err}")
+                return {"success": False, "message": f"Failed to pay invoice: {str(payment_err)}"}
             
             # LNBits returns a payment_hash when successful, not a 'paid' field
             if payment_result and 'payment_hash' in payment_result:
@@ -350,7 +362,7 @@ class PaymentProcessorService:
             else:
                 logger.warning(f"Payment appears to have failed: {payment_result}")
                 return {"success": False, "message": "No payment_hash in response"}
-                
+        
         except Exception as e:
             logger.error(f"Failed to send payment of {balance} sats: {e}")
             return {"success": False, "message": f"Failed to send payment: {str(e)}"}
