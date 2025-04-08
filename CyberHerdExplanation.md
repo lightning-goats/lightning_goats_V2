@@ -46,7 +46,7 @@ When the CyberHerd reaches maximum capacity, we use a headbutting system that al
 - **How headbutting works**: If you want to join a full herd, you can now ⚡headbutt⚡ (bump) the member with the lowest zap contribution right out of the CyberHerd
 - **Zap-based competition**: Only zaps can be used for headbutting
 - **Minimum requirement**: Your zap must be at least 10 sats and must exceed the current lowest member's zap amount.  Big goats push out the little goats and eat more treats.  It's the way of nature
-- **Example**: If the lowest member in the herd zapped 100 sats to join, you need to zap at least 110 sats to replace them
+- **Example**: If the lowest member in the herd zapped 100 sats to join, you need to zap at least 110 sats to replace them.  If someone only joined with a repost, a small 10 sat zap and they're replaced
 - **Notification system**: Both you and the member you replaced will receive a nip04 DM  about the headbutt.  If the headbut fails you should also get a DM.
 - **Cooldown period**: After a headbutt, there's a one-minute cooldown before anyone can attempt another headbutt.
 - **Darwinian order**: This mechanism ensures active and higher-contributing members maintain their spots
