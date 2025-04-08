@@ -22,7 +22,7 @@ A zap or a repost will to secure your place in the herd. Make sure your Nostr pr
 
 ## How Payouts Work
 
-Every time someone triggers the feeder and feeds the ⚡Lightning Goats⚡, the 10 % trigger amount (10% of the sum of all payments sent to trigger the feeder during that trigger cycle) is split among all CyberHerd members:
+Every time someone triggers the feeder and feeds the ⚡Lightning Goats⚡, 10 % of the trigger amount (10% of the sum of all payments sent to trigger the feeder during that trigger cycle) is split among all CyberHerd members:
 
 - Reposting and sending the minimum zap guarantees you at least 1%
 - Larger zaps = larger share: The more sats you zap to join, the larger your percentage of future payouts that day.
