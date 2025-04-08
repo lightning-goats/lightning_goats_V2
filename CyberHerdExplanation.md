@@ -15,7 +15,7 @@ The CyberHerd resets daily at 1:00 AM Mountain Time, creating a fresh opportunit
 
 Likes can't get you into the CyberHerd.
 
-Both actions (repost AND zap) are required to secure your place in the herd. Make sure your Nostr profile has:
+A zap or a repost will to secure your place in the herd. Make sure your Nostr profile has:
 
 - A valid NIP-05 identifier (your verified Nostr address)
 - A working Lightning address to receive payments
