@@ -59,11 +59,11 @@ Remember:
 
 - GM!
 - The CyberHerd resets every day
-- You must rejoin each day by reposting and zapping the new daily note
-- Retards who zap the wrong note can't get in
+- You must rejoin each day by reposting or zapping the new daily note
+- Retards who zap or repost the wrong note can't get in.  Only the #cyberHerd tagged not for the current day will work
 - All accumulated sats are distributed to herd members only when the feeder is triggered
 - Your Lightning address must be functional to receive your share, obviously
 - Join the CyberHerd daily to maximize your earnings and help support the ⚡Lightning Goats⚡!
-- There may be bugs.  There will definitely be bugs.  There's only one guy coding this for fun
+- There may be bugs.  There will definitely be bugs.  There's only one guy coding this as a hobby for fun
 
 ⚡ CYBERHERD ⚡
