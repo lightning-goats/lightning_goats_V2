@@ -534,7 +534,12 @@ class MessagingService:
         elif event_type == "interface_info":
             message_type = "info_message"
             # Simple usage
-            message_text = template.format(new_amount=0, goat_name="", difference_message="")
+            message_text = template.format(
+                new_amount=0, 
+                goat_name="", 
+                difference_message="",
+                difference=0  # Add the missing difference parameter
+            )
             
             # Create JSON message with structured data
             message = json.dumps({
