@@ -5,7 +5,7 @@ import json  # Added for JSON handling
 import datetime  # Added for datetime operations
 from datetime import datetime, timedelta
 import time
-from threading import Lock
+from asyncio import Lock
 from typing import Dict, Any, List, Optional
 
 from fastapi import FastAPI, Request, HTTPException, WebSocket
