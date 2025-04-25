@@ -244,17 +244,21 @@ async def startup():
         trigger_amount=TRIGGER_AMOUNT_SATS
     )
 
-    cyberherd_listener_service = CyberherdListenerService(
-         nos_sec=config['NOS_SEC'],
-         hex_key=config['HEX_KEY'],
-         callback_handler=handle_cyberherd_webhook,  # Use the direct handler
-         nip05_verification=True,  # Enable NIP-05 verification
-         message_template_service=message_template_service,
-         database_service=database_service
-     )
-    await cyberherd_listener_service.initialize(http_client)
-    await cyberherd_listener_service.start()
+    # DISABLED: Don't initialize cyberherd listener service
+    # cyberherd_listener_service = CyberherdListenerService(
+    #      nos_sec=config['NOS_SEC'],
+    #      hex_key=config['HEX_KEY'],
+    #      callback_handler=handle_cyberherd_webhook,
+    #      nip05_verification=True,
+    #      message_template_service=message_template_service,
+    #      database_service=database_service
+    # )
+    # await cyberherd_listener_service.initialize(http_client)
+    # await cyberherd_listener_service.start()
     
+    # Explicitly set to None to indicate it's not running
+    cyberherd_listener_service = None
+
     # Connect to database and initialize tables
     await database_service.connect()
     await database_service.initialize_tables()
@@ -305,9 +309,9 @@ async def startup():
         cyberherd_service=cyberherd_service
     )
     
-    # Initialize health routes with the cyberherd_listener_service
+    # Initialize health routes without the cyberherd_listener_service
     health_routes.initialize_services(
-        cyberherd_listener_service=cyberherd_listener_service
+        cyberherd_listener_service=None  # Pass None instead
     )
     
     # Include routers
@@ -358,13 +362,13 @@ async def schedule_daily_reset():
         
         await asyncio.sleep(sleep_seconds)
 
-        # Reset the cyberherd listener service
-        if cyberherd_listener_service:
-            try:
-                await cyberherd_listener_service.reset()
-                logger.info("Cyberherd listener service reset successfully")
-            except Exception as e:
-                logger.error(f"Failed to reset Cyberherd listener service: {e}")
+        # DISABLED: Reset the cyberherd listener service
+        # if cyberherd_listener_service:
+        #     try:
+        #         await cyberherd_listener_service.reset()
+        #         logger.info("Cyberherd listener service reset successfully")
+        #     except Exception as e:
+        #         logger.error(f"Failed to reset Cyberherd listener service: {e}")
 
         # Perform the reset
         status = await cyberherd_service.reset_cyberherd()
