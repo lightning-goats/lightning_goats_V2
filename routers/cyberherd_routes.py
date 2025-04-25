@@ -290,7 +290,13 @@ async def add_member_by_pubkey(
         
         # Fetch metadata for this pubkey from relays
         fetcher = MetadataFetcher()
-        metadata = await fetcher.fetch_user_metadata(pubkey, DEFAULT_RELAYS)
+        metadata = await fetcher.fetch_metadata(pubkey, DEFAULT_RELAYS)
+        
+        if not metadata:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not fetch metadata for pubkey. Please try again later."
+            )
         
         # Determine kinds based on participation
         kinds_str = ",".join(map(str, participation["kinds"])) if participation["kinds"] else "6"
