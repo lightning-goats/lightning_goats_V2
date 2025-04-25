@@ -740,22 +740,6 @@ class CyberherdListenerService:
                             logger.debug(f"New event detected: {id_output}, kind: {kind}")
                             self.seen_ids.add(id_output)
                             
-                            # Direct processing for kind 6 (reposts) with CyberHerd tag
-                            if kind == 6:
-                                # Check for tags before processing
-                                has_tag = False
-                                for tag in data.get("tags", []):
-                                    if (isinstance(tag, list) and len(tag) > 1 and 
-                                        tag[0] == 't' and any(t in tag[1] for t in self.tags)):
-                                        has_tag = True
-                                        break
-                                        
-                                if has_tag:
-                                    logger.info(f"Processing kind 6 repost directly: {id_output}")
-                                    await self.handle_event(data)
-                                else:
-                                    logger.debug(f"Skipping kind 6 repost without CyberHerd tag: {id_output}")
-                            
                             # For kind 1 posts, spawn subprocess to look for reactions/reposts
                             if kind == 1:
                                 task = asyncio.create_task(self.execute_subprocess(id_output, created_at_output))
