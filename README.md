@@ -4,7 +4,7 @@ A Bitcoin Lightning Network powered application that allows the internet to coll
 
 ## Overview
 
-Lightning Goats V2 is a full-stack application that connects the Bitcoin Lightning Network to real-world actions. Users can send Bitcoin Lightning payments to trigger a physical goat feeder using Openhab and ip power switches, watch live video feeds of the goats being fed, and join the "CyberHerd" community.
+Lightning Goats V2 is a full-stack application that connects the Bitcoin Lightning Network to real-world actions. Users can send Bitcoin Lightning payments to trigger a physical goat feeder using OpenHAB and ip power switches, watch live video feeds of the goats being fed, and join the "CyberHerd" community.
 
 ![Lightning Goats](https://lightning-goats.com/images/lightninggoatslogo1.png)
 
