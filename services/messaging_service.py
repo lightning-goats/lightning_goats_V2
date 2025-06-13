@@ -468,7 +468,7 @@ class MessagingService:
                 try:
                     from services.goat_service import GoatStateService
                     if hasattr(self, 'goat_service') and isinstance(self.goat_service, GoatStateService):
-                        feedings = await self.goat_service.get_feedings()
+                        feedings = await self.goat_service.get_feedings_count()
                         message_data["goat_feedings"] = feedings
                 except Exception as e:
                     self.logger.error(f"Error fetching feedings for message: {e}")
