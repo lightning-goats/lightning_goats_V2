@@ -63,9 +63,9 @@ Lightning Goats V2 is a full-stack application that connects the Bitcoin Lightni
    # Edit .env with your configuration
    ```
 
-5. Initialize the database:
+5. Create or validate the database tables:
    ```bash
-   python -m scripts.initialize_db
+   python scripts/check_database.py
    ```
 
 ## Configuration
