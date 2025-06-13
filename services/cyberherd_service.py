@@ -475,9 +475,8 @@ class CyberHerdService:
             return None, None
     
     async def process_existing_member(
-        self, 
-        item_dict: dict, 
-        item: Any, 
+        self,
+        item_dict: dict,
         result: dict
     ) -> Tuple[Dict, Dict]:
         """Handle updates to an existing member in the cyber herd."""
@@ -584,7 +583,7 @@ class CyberHerdService:
             relays_json = json.dumps(item_dict['relays'])
             
             # Only update if there's a payout increment or kinds change
-            if payout_increment > 0 or updated_kinds_str != ','.join(map(str, sorted(current_kinds))):
+            if payout_increment > 0 or updated_kinds_str != result["kinds"]:
                 # Update member in database
                 await self.database.update_cyberherd_member(
                     pubkey=pubkey,
@@ -717,7 +716,9 @@ class CyberHerdService:
                 if existing_member:
                     self.logger.debug(f"Found existing member: {pubkey}")
                     notify_data, target_data = await self.process_existing_member(
-                        item_dict, item, existing_member)
+                        item_dict,
+                        existing_member,
+                    )
                 elif can_add_members:
                     self.logger.debug(f"Adding new member: {pubkey}")
                     notify_data, target_data = await self.process_new_member(item_dict)
